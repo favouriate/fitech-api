@@ -21,40 +21,35 @@
   <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
   [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
 
-## Description
-
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+## Local development
 
 ## Project setup
 
 ```bash
-$ npm install
+npm install
+npx prisma generate
 ```
 
-## Compile and run the project
+Copy `.env.example` to `.env` and replace `JWT_ACCESS_SECRET` with a random
+secret of at least 32 characters. The example database URL matches the local
+PostgreSQL port configured in `docker-compose.yml`.
+
+Start the local dependencies and API:
 
 ```bash
-# development
-$ npm run start
-
-# watch mode
-$ npm run start:dev
-
-# production mode
-$ npm run start:prod
+docker compose up -d
+npm run start:dev
 ```
+
+The readiness check is available at `/health`. API routes are URI-versioned
+under `/v1`; in non-production environments, Swagger UI is available at `/docs`.
 
 ## Run tests
 
 ```bash
-# unit tests
-$ npm run test
-
-# e2e tests
-$ npm run test:e2e
-
-# test coverage
-$ npm run test:cov
+npm run test
+npm run test:e2e
+npm run test:cov
 ```
 
 ## Deployment
