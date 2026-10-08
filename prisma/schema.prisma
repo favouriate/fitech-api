@@ -1,0 +1,130 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------- Enums ----------
+enum Direction {
+  DEBIT
+  CREDIT
+}
+
+enum WalletStatus {
+  ACTIVE
+  FROZEN
+  CLOSED
+}
+
+enum TransferStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  REVERSED
+}
+
+enum IdempotencyStatus {
+  STARTED
+  FINISHED
+}
+
+// ---------- Models ----------
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String
+  firstName    String
+  lastName     String
+  isVerified   Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  wallets         Wallet[]
+  refreshTokens   RefreshToken[]
+  idempotencyKeys IdempotencyKey[]
+
+  @@index([email])
+  @@map("users")
+}
+
+model Wallet {
+  id        String       @id @default(uuid())
+  userId    String
+  user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  currency  String       @default("NGN")
+  status    WalletStatus @default(ACTIVE)
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+
+  ledgerEntries LedgerEntry[]
+
+  @@unique([userId, currency])
+  @@index([userId])
+  @@map("wallets")
+}
+
+model LedgerEntry {
+  id          String    @id @default(uuid())
+  walletId    String
+  wallet      Wallet    @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  amount      Decimal   @db.Decimal(19, 4)
+  direction   Direction
+  reference   String
+  description String?
+  metadata    Json?
+  createdAt   DateTime  @default(now())
+
+  @@index([walletId, createdAt])
+  @@index([reference])
+  @@map("ledger_entries")
+}
+
+model Transfer {
+  id               String         @id @default(uuid())
+  senderWalletId   String
+  receiverWalletId String
+  amount           Decimal        @db.Decimal(19, 4)
+  currency         String
+  status           TransferStatus @default(PENDING)
+  reference        String         @unique
+  failureReason    String?
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  @@index([senderWalletId, createdAt])
+  @@index([receiverWalletId, createdAt])
+  @@map("transfers")
+}
+
+model IdempotencyKey {
+  id           String            @id @default(uuid())
+  key          String            @unique
+  userId       String
+  user         User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  requestHash  String
+  responseBody Json?
+  status       IdempotencyStatus @default(STARTED)
+  createdAt    DateTime          @default(now())
+  expiresAt    DateTime
+
+  @@index([key])
+  @@index([expiresAt])
+  @@map("idempotency_keys")
+}
+
+model RefreshToken {
+  id        String    @id @default(uuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String    @unique
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+  @@index([tokenHash])
+  @@map("refresh_tokens")
+}

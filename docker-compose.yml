@@ -1,0 +1,36 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: fitech_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: fitech
+      POSTGRES_PASSWORD: fitech_dev_password
+      POSTGRES_DB: fitech_db
+    ports:
+      - "5433:5432"        # host 5433 → container 5432 (avoids Windows Postgres on 5432)
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fitech -d fitech_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: fitech_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"        # Redis standard port
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  pgdata:
+  redisdata:
