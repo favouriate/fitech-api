@@ -23,8 +23,6 @@
 
 ## Local development
 
-## Project setup
-
 ```bash
 npm install
 npx prisma generate
@@ -38,11 +36,23 @@ Start the local dependencies and API:
 
 ```bash
 docker compose up -d
+npx prisma migrate deploy
 npm run start:dev
 ```
 
-The readiness check is available at `/health`. API routes are URI-versioned
-under `/v1`; in non-production environments, Swagger UI is available at `/docs`.
+The readiness check is available at `/health`. API routes use the `/v1`
+prefix; in non-production environments, Swagger UI is available at `/docs`.
+
+### Authentication
+
+- `POST /v1/auth/register` creates an account.
+- `POST /v1/auth/login` returns an access token and opaque refresh token.
+- `POST /v1/auth/refresh` rotates a refresh token; reuse of a revoked token
+  revokes the user's active sessions.
+- `POST /v1/auth/logout` revokes one refresh token.
+- `POST /v1/auth/logout-all` revokes all refresh tokens for the authenticated
+  user.
+- `GET /v1/auth/me` returns the authenticated user's public profile.
 
 ## Run tests
 

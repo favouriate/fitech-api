@@ -122,6 +122,8 @@ model RefreshToken {
   tokenHash String    @unique
   expiresAt DateTime
   revokedAt DateTime?
+  userAgent String?
+  ipAddress String?
   createdAt DateTime  @default(now())
 
   @@index([userId])
