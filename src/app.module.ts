@@ -10,6 +10,8 @@ import jwtConfig from './config/jwt.config.js';
 import redisConfig from './config/redis.config.js';
 import throttlerConfig from './config/throttler.config.js';
 import { validateEnv } from './config/env.validation.js';
+import { JwtAuthGuard } from './common/guards/jwt-auth.guard.js';
+import { AuthModule } from './modules/auth/auth.module.js';
 
 import { PrismaModule } from './prisma/prisma.module.js';
 import { HealthModule } from './health/health.module.js';
@@ -76,8 +78,10 @@ import { HealthModule } from './health/health.module.js';
 
     PrismaModule,
     HealthModule,
+    AuthModule,
   ],
   providers: [
+    { provide: APP_GUARD, useClass: JwtAuthGuard },
     { provide: APP_GUARD, useClass: ThrottlerGuard },
   ],
 })
