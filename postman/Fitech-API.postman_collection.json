@@ -1,0 +1,270 @@
+{
+  "info": {
+    "_postman_id": "4b5953ce-6794-429d-922f-16335ccdcef2",
+    "name": "Fitech Collection",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_exporter_id": "43208445",
+    "_collection_link": "https://go.postman.co/collection/43208445-4b5953ce-6794-429d-922f-16335ccdcef2?source=collection_link"
+  },
+  "item": [
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "register",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Generate unique email for this run\r\nconst ts = Date.now();\r\nconst email = `ada+${ts}@example.com`;\r\npm.environment.set(\"testEmail\", email);\r\nconsole.log(`📧 Registering with: ${email}`);"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 201 Created\", () => {\r\n  pm.response.to.have.status(201);\r\n});\r\n\r\nconst body = pm.response.json();\r\n\r\npm.test(\"Returns user object\", () => {\r\n  pm.expect(body).to.have.property(\"id\");\r\n  pm.expect(body).to.have.property(\"email\");\r\n  pm.expect(body).to.not.have.property(\"passwordHash\");\r\n});\r\n\r\nconsole.log(`✅ User registered: ${body.email}`);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n  \"email\": \"{{testEmail}}\",\r\n  \"password\": \"{{testPassword}}\",\r\n  \"firstName\": \"Ada\",\r\n  \"lastName\": \"Okafor\"\r\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/register",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "register"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 200 OK\", () => {\r\n  pm.response.to.have.status(200);\r\n});\r\n\r\nconst body = pm.response.json();\r\n\r\npm.test(\"Returns user + tokens\", () => {\r\n  pm.expect(body).to.have.property(\"user\");\r\n  pm.expect(body).to.have.property(\"tokens\");\r\n  pm.expect(body.tokens).to.have.property(\"accessToken\");\r\n  pm.expect(body.tokens).to.have.property(\"refreshToken\");\r\n  pm.expect(body.tokens).to.have.property(\"expiresIn\");\r\n});\r\n\r\n// ⭐ SAVE TOKENS — this is what makes the whole chain work\r\nif (body.tokens && body.tokens.accessToken && body.tokens.refreshToken) {\r\n  pm.environment.set(\"accessToken\", body.tokens.accessToken);\r\n  pm.environment.set(\"refreshToken\", body.tokens.refreshToken);\r\n  console.log(\"✅ Tokens saved to environment\");\r\n  console.log(\"accessToken length:\", body.tokens.accessToken.length);\r\n  console.log(\"refreshToken length:\", body.tokens.refreshToken.length);\r\n} else {\r\n  console.error(\"❌ No tokens in response!\");\r\n}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n  \"email\": \"{{testEmail}}\",\r\n  \"password\": \"{{testPassword}}\"\r\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "login"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "refresh",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 200 OK\", () => {\r\n  pm.response.to.have.status(200);\r\n});\r\n\r\nconst body = pm.response.json();\r\n\r\npm.test(\"Returns fresh tokens\", () => {\r\n  pm.expect(body).to.have.property(\"tokens\");\r\n  pm.expect(body.tokens.accessToken).to.be.a(\"string\");\r\n  pm.expect(body.tokens.refreshToken).to.be.a(\"string\");\r\n});\r\n\r\n// Rotate: save new tokens\r\nif (body.tokens && body.tokens.accessToken && body.tokens.refreshToken) {\r\n  pm.environment.set(\"accessToken\", body.tokens.accessToken);\r\n  pm.environment.set(\"refreshToken\", body.tokens.refreshToken);\r\n  console.log(\"🔄 Tokens rotated successfully\");\r\n}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n  \"refreshToken\": \"{{refreshToken}}\"\r\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/refresh",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "refresh"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "logout",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 200 OK\", () => {\r\n  pm.response.to.have.status(200);\r\n});\r\n\r\nconst body = pm.response.json();\r\n\r\npm.test(\"Confirms logout\", () => {\r\n  pm.expect(body).to.have.property(\"message\");\r\n});\r\n\r\nconsole.log(\"✅ Logged out:\", body.message);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{accessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n  \"refreshToken\": \"{{refreshToken}}\"\r\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/logout",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "logout"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "logout-all",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 200 OK\", () => {\r\n  pm.response.to.have.status(200);\r\n});\r\n\r\nconst body = pm.response.json();\r\n\r\npm.test(\"Confirms all sessions revoked\", () => {\r\n  pm.expect(body).to.have.property(\"message\");\r\n});\r\n\r\n// Clear tokens now — we're logged out everywhere\r\npm.environment.unset(\"accessToken\");\r\npm.environment.unset(\"refreshToken\");\r\nconsole.log(\"🧹 All sessions revoked, tokens cleared\");"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{accessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/logout-all",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "logout-all"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Fitech API",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "// Runs after EVERY request in this collection\r\npm.test(\"Response time is less than 2000ms\", () => {\r\n  pm.expect(pm.response.responseTime).to.be.below(2000);\r\n});\r\n\r\npm.test(\"Has correlation ID header\", () => {\r\n  // Only assert if header is expected (skip on errors)\r\n  if (pm.response.code < 500) {\r\n    pm.expect(pm.response.headers.has(\"x-correlation-id\")).to.be.true;\r\n  }\r\n});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{accessToken}}",
+              "type": "string"
+            }
+          ]
+        },
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "Fitech API",
+          "host": [
+            "Fitech API"
+          ]
+        }
+      },
+      "response": []
+    }
+  ]
+}
