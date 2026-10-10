@@ -1,5 +1,5 @@
-import { ValidationPipe, VersioningType, Logger } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
+import { ValidationPipe, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { Logger as PinoLogger } from 'nestjs-pino';
@@ -8,8 +8,8 @@ import { AppModule } from './app.module.js';
 
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create(AppModule, {
-    bufferLogs: true,
-    rawBody: true,
+    bufferLogs: true,        // buffer logs until Pino takes over
+    rawBody: true,           // needed for webhook signature verification later
   });
 
   const config = app.get(ConfigService);
@@ -17,14 +17,18 @@ async function bootstrap(): Promise<void> {
   const nodeEnv = config.get<string>('app.nodeEnv') ?? 'development';
   const allowedOrigins = config.get<string[]>('app.allowedOrigins') ?? [];
 
+  // ─── Logger ──────────────────────────────────────────────────────
+  // Attach Pino as the app-wide logger — every Nest log goes through it.
   app.useLogger(app.get(PinoLogger));
 
+  // ─── Security ────────────────────────────────────────────────────
+  // Helmet sets secure HTTP headers (X-Frame-Options, HSTS, CSP, etc.)
   app.use(
     helmet({
       contentSecurityPolicy: nodeEnv === 'production' ? undefined : false,
-      crossOriginEmbedderPolicy: false,
+      crossOriginEmbedderPolicy: false, // APIs don't need COEP
       hsts: {
-        maxAge: 31_536_000,
+        maxAge: 31_536_000,       // 1 year
         includeSubDomains: true,
         preload: true,
       },
@@ -42,14 +46,19 @@ async function bootstrap(): Promise<void> {
       'X-Correlation-Id',
     ],
     exposedHeaders: ['X-Correlation-Id'],
-    maxAge: 86_400,
+    maxAge: 86_400,               // cache preflight for 24h
   });
 
-  app.enableVersioning({
-    type: VersioningType.URI,
-    defaultVersion: '1',
+  // ─── Global Route Prefix ─────────────────────────────────────────
+  // All routes prefixed with /v1 — health and docs stay unversioned.
+  // Example: POST /v1/auth/login, POST /v1/transfers
+  app.setGlobalPrefix('v1', {
+    exclude: ['health', 'docs', 'docs-json'],
   });
 
+  // ─── Validation ──────────────────────────────────────────────────
+  // Global pipe: whitelist strips unknown props, forbidNonWhitelisted
+  // rejects requests with extra fields (prevents mass-assignment attacks).
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
@@ -61,11 +70,13 @@ async function bootstrap(): Promise<void> {
       stopAtFirstError: false,
       validationError: {
         target: false,
-        value: false,
+        value: false, // never leak submitted values in error responses
       },
     }),
   );
 
+  // ─── Swagger ─────────────────────────────────────────────────────
+  // Only expose in non-production. In production, disable or protect.
   if (nodeEnv !== 'production') {
     const swaggerConfig = new DocumentBuilder()
       .setTitle('Fitech API')
@@ -82,10 +93,10 @@ async function bootstrap(): Promise<void> {
         },
         'access-token',
       )
-      .addTag('Auth', 'Authentication and session management')
-      .addTag('Wallets', 'Wallet creation and balances')
+      .addTag('Auth', 'Authentication & session management')
+      .addTag('Wallets', 'Wallet creation & balances')
       .addTag('Transfers', 'Money movement (idempotent)')
-      .addTag('Health', 'Liveness and readiness probes')
+      .addTag('Health', 'Liveness & readiness probes')
       .build();
 
     const document = SwaggerModule.createDocument(app, swaggerConfig);
@@ -99,14 +110,18 @@ async function bootstrap(): Promise<void> {
     });
   }
 
+  // ─── Graceful Shutdown ───────────────────────────────────────────
+  // On SIGTERM/SIGINT, let in-flight requests finish before closing.
+  // CRITICAL in production — Kubernetes sends SIGTERM before killing pods.
   app.enableShutdownHooks();
+
   await app.listen(port);
 
   const logger = new Logger('Bootstrap');
-  logger.log(`Server running at http://localhost:${port}`);
+  logger.log(`🚀 Server running at http://localhost:${port}`);
   if (nodeEnv !== 'production') {
-    logger.log(`Swagger UI at http://localhost:${port}/docs`);
+    logger.log(`📚 Swagger UI at http://localhost:${port}/docs`);
   }
 }
 
-await bootstrap();
+void bootstrap();

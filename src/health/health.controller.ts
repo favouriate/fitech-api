@@ -4,7 +4,9 @@ import {
   HealthCheckService,
   HealthIndicatorService,
 } from '@nestjs/terminus';
+import { SkipThrottle } from '@nestjs/throttler';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { Public } from '../common/decorators/public.decorator.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 
 @ApiTags('Health')
@@ -20,6 +22,8 @@ export class HealthController {
   ) {}
 
   @Get()
+  @Public()
+  @SkipThrottle({ auth: true })
   @HealthCheck()
   @ApiOperation({ summary: 'Liveness and readiness probe' })
   check() {

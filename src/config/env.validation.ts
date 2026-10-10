@@ -1,4 +1,12 @@
 import { z } from 'zod';
+import ms, { type StringValue } from 'ms';
+
+const durationSchema = z.string().refine((value) => {
+  const duration = ms(value as StringValue);
+  return (
+    duration !== undefined && Number.isFinite(duration) && duration >= 1000
+  );
+}, 'Expiration must be a valid duration of at least one second');
 
 export const envSchema = z.object({
   NODE_ENV: z
@@ -25,8 +33,8 @@ export const envSchema = z.object({
   JWT_ACCESS_SECRET: z
     .string()
     .min(32, 'JWT_ACCESS_SECRET must be at least 32 characters'),
-  JWT_ACCESS_EXPIRES_IN: z.string().default('15m'),
-  JWT_REFRESH_EXPIRES_IN: z.string().default('7d'),
+  JWT_ACCESS_EXPIRES_IN: durationSchema.default('15m'),
+  JWT_REFRESH_EXPIRES_IN: durationSchema.default('7d'),
   REDIS_HOST: z.string().min(1).default('localhost'),
   REDIS_PORT: z.coerce.number().int().positive().max(65535).default(6379),
 });
