@@ -15,6 +15,8 @@ import { AuthModule } from './modules/auth/auth.module.js';
 
 import { PrismaModule } from './prisma/prisma.module.js';
 import { HealthModule } from './health/health.module.js';
+import { LedgerModule } from './modules/ledger/ledger.module.js';
+import { WalletsModule } from './modules/wallets/wallets.module.js';
 
 @Module({
   imports: [
@@ -79,6 +81,8 @@ import { HealthModule } from './health/health.module.js';
     PrismaModule,
     HealthModule,
     AuthModule,
+    LedgerModule,
+    WalletsModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: JwtAuthGuard },
