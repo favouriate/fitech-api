@@ -31,6 +31,13 @@ enum IdempotencyStatus {
   FINISHED
 }
 
+enum FundingStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  EXPIRED
+}
+
 // ---------- Models ----------
 model User {
   id           String   @id @default(uuid())
@@ -60,6 +67,7 @@ model Wallet {
   updatedAt DateTime     @updatedAt
 
   ledgerEntries LedgerEntry[]
+  fundings      Funding[]
 
   @@unique([userId, currency])
   @@index([userId])
@@ -129,4 +137,25 @@ model RefreshToken {
   @@index([userId])
   @@index([tokenHash])
   @@map("refresh_tokens")
+}
+
+model Funding {
+  id            String        @id @default(uuid())
+  reference     String        @unique
+  walletId      String
+  wallet        Wallet        @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  amount        Decimal       @db.Decimal(19, 4)
+  currency      String        @default("NGN")
+  status        FundingStatus @default(PENDING)
+  provider      String        @default("SIMULATED")
+  providerRef   String?
+  failureReason String?
+  metadata      Json?
+  createdAt     DateTime      @default(now())
+  completedAt   DateTime?
+  updatedAt     DateTime      @updatedAt
+
+  @@index([walletId, createdAt])
+  @@index([status, createdAt])
+  @@map("fundings")
 }
