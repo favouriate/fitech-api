@@ -265,6 +265,151 @@
         }
       },
       "response": []
+    },
+    {
+      "name": "Funding",
+      "description": "Development lifecycle: initiate, get-status, simulate-confirm. Obtain an access token from Auth login first; run before logout-all. Simulation is disabled in production.",
+      "item": [
+        {
+          "name": "initiate",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Expected status 201', () => pm.response.to.have.status(201));",
+                  "if (pm.response.code === 201) {",
+                  "  const body = pm.response.json();",
+                  "  pm.test('Funding starts PENDING', () => pm.expect(body.status).to.eql('PENDING'));",
+                  "  pm.environment.set('fundingReference', body.reference);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{accessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount\": 500\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/funding/initiate",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "funding",
+                "initiate"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "get-status",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Expected status 200', () => pm.response.to.have.status(200));",
+                  "if (pm.response.code === 200) pm.test('Wallet balance is included', () => pm.expect(pm.response.json().walletBalance).to.be.a('number'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{accessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/funding/{{fundingReference}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "funding",
+                "{{fundingReference}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "simulate-confirm",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Expected status 200', () => pm.response.to.have.status(200));",
+                  "if (pm.response.code === 200) pm.test('Funding completed', () => pm.expect(pm.response.json().status).to.eql('COMPLETED'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{accessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/funding/{{fundingReference}}/simulate-confirm",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "funding",
+                "{{fundingReference}}",
+                "simulate-confirm"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
     }
   ]
 }

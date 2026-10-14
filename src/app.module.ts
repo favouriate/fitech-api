@@ -17,9 +17,12 @@ import { PrismaModule } from './prisma/prisma.module.js';
 import { HealthModule } from './health/health.module.js';
 import { LedgerModule } from './modules/ledger/ledger.module.js';
 import { WalletsModule } from './modules/wallets/wallets.module.js';
-import { BullModule } from '@nestjs/bullmq';
+import { BullModule, InjectQueue } from '@nestjs/bullmq';
 import { TransfersModule } from './modules/transfers/transfers.module.js';
 import { NotificationsModule } from './modules/notifications/notifications.module.js';
+import { FundingModule } from './modules/funding/funding.module.js';
+import { Queue } from 'bullmq';
+import type { OnModuleInit } from '@nestjs/common';
 
 @Module({
   imports: [
@@ -96,6 +99,7 @@ import { NotificationsModule } from './modules/notifications/notifications.modul
     LedgerModule,
     WalletsModule,
     TransfersModule,
+    FundingModule,
     NotificationsModule,
   ],
   providers: [
@@ -103,4 +107,21 @@ import { NotificationsModule } from './modules/notifications/notifications.modul
     { provide: APP_GUARD, useClass: ThrottlerGuard },
   ],
 })
-export class AppModule {}
+export class AppModule implements OnModuleInit {
+  constructor(
+    @InjectQueue('funding-reconciliation')
+    private readonly fundingReconciliationQueue: Queue<Record<string, never>>,
+  ) {}
+
+  async onModuleInit(): Promise<void> {
+    await this.fundingReconciliationQueue.upsertJobScheduler(
+      'funding-reconciliation-singleton',
+      { pattern: '*/5 * * * *' },
+      {
+        name: 'expire-stale-fundings',
+        data: {},
+        opts: { removeOnComplete: 100, removeOnFail: 50 },
+      },
+    );
+  }
+}
