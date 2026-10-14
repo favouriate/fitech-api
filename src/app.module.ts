@@ -17,6 +17,9 @@ import { PrismaModule } from './prisma/prisma.module.js';
 import { HealthModule } from './health/health.module.js';
 import { LedgerModule } from './modules/ledger/ledger.module.js';
 import { WalletsModule } from './modules/wallets/wallets.module.js';
+import { BullModule } from '@nestjs/bullmq';
+import { TransfersModule } from './modules/transfers/transfers.module.js';
+import { NotificationsModule } from './modules/notifications/notifications.module.js';
 
 @Module({
   imports: [
@@ -79,10 +82,21 @@ import { WalletsModule } from './modules/wallets/wallets.module.js';
     }),
 
     PrismaModule,
+    BullModule.forRootAsync({
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => ({
+        connection: {
+          host: config.get<string>('redis.host') ?? 'localhost',
+          port: config.get<number>('redis.port') ?? 6379,
+        },
+      }),
+    }),
     HealthModule,
     AuthModule,
     LedgerModule,
     WalletsModule,
+    TransfersModule,
+    NotificationsModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: JwtAuthGuard },

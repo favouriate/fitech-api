@@ -15,6 +15,7 @@ import {
   ApiParam,
   ApiResponse,
   ApiTags,
+  ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { CurrentUser } from '../../common/decorators/current-user.decorator.js';
@@ -38,6 +39,7 @@ export class WalletsController {
   @ApiOperation({ summary: 'Create the user NGN wallet' })
   @ApiResponse({ status: 201, type: WalletResponseDto })
   @ApiResponse({ status: 409, description: 'Wallet already exists' })
+  @ApiUnauthorizedResponse({ description: 'Missing or invalid access token' })
   async create(
     @CurrentUser() user: AuthenticatedUser,
     @Body() dto: CreateWalletDto,
@@ -50,6 +52,7 @@ export class WalletsController {
   @ApiOperation({ summary: "Get the current user's wallet with balance" })
   @ApiResponse({ status: 200, type: WalletResponseDto })
   @ApiResponse({ status: 404, description: 'No wallet found' })
+  @ApiUnauthorizedResponse({ description: 'Missing or invalid access token' })
   async mine(
     @CurrentUser() user: AuthenticatedUser,
   ): Promise<WalletResponseDto | null> {
@@ -61,6 +64,7 @@ export class WalletsController {
   @ApiParam({ name: 'id', format: 'uuid' })
   @ApiResponse({ status: 200, type: WalletResponseDto })
   @ApiResponse({ status: 404, description: 'Wallet not found' })
+  @ApiUnauthorizedResponse({ description: 'Missing or invalid access token' })
   async findOne(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: AuthenticatedUser,
@@ -73,6 +77,7 @@ export class WalletsController {
   @ApiParam({ name: 'id', format: 'uuid' })
   @ApiResponse({ status: 200, description: 'Paginated ledger entries' })
   @ApiResponse({ status: 404, description: 'Wallet not found' })
+  @ApiUnauthorizedResponse({ description: 'Missing or invalid access token' })
   async getLedger(
     @Param('id', ParseUUIDPipe) id: string,
     @Query() query: ListLedgerQueryDto,

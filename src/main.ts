@@ -1,10 +1,10 @@
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { Logger as PinoLogger } from 'nestjs-pino';
 import helmet from 'helmet';
 import { AppModule } from './app.module.js';
+import { setupSwagger } from './config/swagger.config.js';
 
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create(AppModule, {
@@ -77,38 +77,7 @@ async function bootstrap(): Promise<void> {
 
   // ─── Swagger ─────────────────────────────────────────────────────
   // Only expose in non-production. In production, disable or protect.
-  if (nodeEnv !== 'production') {
-    const swaggerConfig = new DocumentBuilder()
-      .setTitle('Fitech API')
-      .setDescription(
-        'Production-grade fintech API — ledger-based, idempotent, ACID-safe',
-      )
-      .setVersion('1.0')
-      .addBearerAuth(
-        {
-          type: 'http',
-          scheme: 'bearer',
-          bearerFormat: 'JWT',
-          description: 'Enter your JWT access token',
-        },
-        'access-token',
-      )
-      .addTag('Auth', 'Authentication & session management')
-      .addTag('Wallets', 'Wallet creation & balances')
-      .addTag('Transfers', 'Money movement (idempotent)')
-      .addTag('Health', 'Liveness & readiness probes')
-      .build();
-
-    const document = SwaggerModule.createDocument(app, swaggerConfig);
-    SwaggerModule.setup('docs', app, document, {
-      swaggerOptions: {
-        persistAuthorization: true,
-        tagsSorter: 'alpha',
-        operationsSorter: 'alpha',
-      },
-      customSiteTitle: 'Fitech API Docs',
-    });
-  }
+  setupSwagger(app, config);
 
   // ─── Graceful Shutdown ───────────────────────────────────────────
   // On SIGTERM/SIGINT, let in-flight requests finish before closing.
