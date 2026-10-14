@@ -92,6 +92,7 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Revoke a refresh token' })
   @ApiOkResponse({ type: MessageResponseDto })
+  @ApiUnauthorizedResponse({ description: 'Missing or invalid access token' })
   async logout(@Body() dto: RefreshTokenDto) {
     await this.auth.logout(dto.refreshToken);
     return { message: 'Logged out successfully' };
@@ -102,6 +103,7 @@ export class AuthController {
   @ApiBearerAuth('access-token')
   @ApiOperation({ summary: 'Revoke all refresh tokens for the current user' })
   @ApiOkResponse({ type: MessageResponseDto })
+  @ApiUnauthorizedResponse({ description: 'Missing or invalid access token' })
   async logoutAll(@CurrentUser('id') userId: string) {
     await this.auth.logoutAll(userId);
     return { message: 'Logged out from all devices successfully' };
@@ -111,6 +113,7 @@ export class AuthController {
   @ApiBearerAuth('access-token')
   @ApiOperation({ summary: 'Get the current user profile' })
   @ApiOkResponse({ type: UserResponseDto })
+  @ApiUnauthorizedResponse({ description: 'Missing or invalid access token' })
   async me(@CurrentUser() authenticatedUser: AuthenticatedUser) {
     const user = await this.users.findById(authenticatedUser.id);
     if (!user) {
