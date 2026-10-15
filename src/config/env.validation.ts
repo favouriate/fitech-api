@@ -37,6 +37,9 @@ export const envSchema = z.object({
   JWT_REFRESH_EXPIRES_IN: durationSchema.default('7d'),
   REDIS_HOST: z.string().min(1).default('localhost'),
   REDIS_PORT: z.coerce.number().int().positive().max(65535).default(6379),
+  WEBHOOK_SECRET: z
+    .string()
+    .min(16, 'WEBHOOK_SECRET must be at least 16 characters'),
 });
 
 export type Env = z.infer<typeof envSchema>;

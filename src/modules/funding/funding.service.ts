@@ -4,6 +4,7 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Direction, FundingStatus, Prisma, WalletStatus } from '@prisma/client';
@@ -14,6 +15,7 @@ import { PrismaService } from '../../prisma/prisma.service.js';
 import { LedgerService } from '../ledger/ledger.service.js';
 import { WalletsService } from '../wallets/wallets.service.js';
 import { SimulatedProviderService } from './providers/simulated-provider.service.js';
+import { BusinessMetricsService } from '../metrics/business-metrics.service.js';
 
 export type FundingNotification = {
   reference: string;
@@ -61,6 +63,7 @@ export class FundingService {
     private readonly logger: Logger,
     @InjectQueue('notifications')
     private readonly notificationsQueue: Queue<FundingNotification>,
+    @Optional() private readonly metrics?: BusinessMetricsService,
   ) {}
 
   async initiate(userId: string, amount: number): Promise<Funding> {
@@ -109,6 +112,7 @@ export class FundingService {
     this.logger.log(
       `Funding initiated: ${reference} for user ${userId}, amount ${amount}`,
     );
+    this.metrics?.recordFundingInitiated();
     return funding;
   }
 
@@ -166,6 +170,7 @@ export class FundingService {
       });
     });
     this.logger.log(`Funding completed: ${reference}`);
+    this.metrics?.recordFundingCompleted();
     try {
       await this.notificationsQueue.add('funding-completed', {
         reference: funding.reference,

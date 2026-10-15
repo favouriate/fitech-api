@@ -1,3 +1,4 @@
+import './instrument.js';
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -53,7 +54,7 @@ async function bootstrap(): Promise<void> {
   // All routes prefixed with /v1 — health and docs stay unversioned.
   // Example: POST /v1/auth/login, POST /v1/transfers
   app.setGlobalPrefix('v1', {
-    exclude: ['health', 'docs', 'docs-json'],
+    exclude: ['health', 'docs', 'docs-json', 'metrics'],
   });
 
   // ─── Validation ──────────────────────────────────────────────────
