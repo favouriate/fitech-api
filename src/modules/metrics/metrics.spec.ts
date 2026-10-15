@@ -1,3 +1,4 @@
+import { createMock } from '@golevelup/ts-jest';
 import { Controller, Get, Logger, NotFoundException } from '@nestjs/common';
 import type { INestApplication } from '@nestjs/common';
 import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
@@ -49,13 +50,13 @@ describe('Metrics and error responses', () => {
       imports: [MetricsModule],
       controllers: [MetricsTestController, ProtectedTestController],
       providers: [
-        { provide: Logger, useValue: { error: vi.fn(), warn: vi.fn() } },
+        { provide: Logger, useValue: { error: mockFn(), warn: mockFn() } },
         { provide: SentryGlobalFilter, useClass: AllExceptionsFilter },
         { provide: APP_FILTER, useExisting: SentryGlobalFilter },
         { provide: APP_INTERCEPTOR, useExisting: MetricsInterceptor },
         { provide: APP_GUARD, useClass: JwtAuthGuard },
-        { provide: JwtService, useValue: { verifyAsync: vi.fn() } },
-        { provide: ConfigService, useValue: { getOrThrow: vi.fn() } },
+        { provide: JwtService, useValue: { verifyAsync: mockFn() } },
+        { provide: ConfigService, useValue: { getOrThrow: mockFn() } },
       ],
     }).compile();
     business = module.get(BusinessMetricsService);
@@ -110,3 +111,9 @@ describe('Metrics and error responses', () => {
     expect(metrics.text).toContain('funding_completed_total 1');
   });
 });
+
+function mockFn(implementation?: (...args: never[]) => unknown): jest.Mock {
+  const fn = createMock<{ fn: jest.Mock }>().fn;
+  if (implementation) fn.mockImplementation(implementation);
+  return fn;
+}

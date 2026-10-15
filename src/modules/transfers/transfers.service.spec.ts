@@ -1,3 +1,4 @@
+import { createMock } from '@golevelup/ts-jest';
 import { Logger } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { getQueueToken } from '@nestjs/bullmq';
@@ -66,28 +67,28 @@ describe('TransfersService', () => {
   let service: TransfersService;
   const events: string[] = [];
   const tx = {
-    $queryRaw: vi.fn(),
-    ledgerEntry: { groupBy: vi.fn() },
-    transfer: { create: vi.fn() },
-    idempotencyKey: { update: vi.fn() },
+    $queryRaw: mockFn(),
+    ledgerEntry: { groupBy: mockFn() },
+    transfer: { create: mockFn() },
+    idempotencyKey: { update: mockFn() },
   };
   const prisma = {
-    wallet: { findFirst: vi.fn(), findMany: vi.fn() },
+    wallet: { findFirst: mockFn(), findMany: mockFn() },
     idempotencyKey: {
-      findUnique: vi.fn(),
-      create: vi.fn(),
-      deleteMany: vi.fn(),
+      findUnique: mockFn(),
+      create: mockFn(),
+      deleteMany: mockFn(),
     },
-    transfer: { findFirst: vi.fn(), findMany: vi.fn() },
-    $transaction: vi.fn(),
+    transfer: { findFirst: mockFn(), findMany: mockFn() },
+    $transaction: mockFn(),
   };
-  const ledger = { recordEntry: vi.fn() };
-  const wallets = { findOneForUser: vi.fn() };
-  const queue = { add: vi.fn() };
-  const logger = { log: vi.fn(), warn: vi.fn(), error: vi.fn() };
+  const ledger = { recordEntry: mockFn() };
+  const wallets = { findOneForUser: mockFn() };
+  const queue = { add: mockFn() };
+  const logger = { log: mockFn(), warn: mockFn(), error: mockFn() };
 
   beforeEach(async () => {
-    vi.resetAllMocks();
+    jest.resetAllMocks();
     events.length = 0;
     prisma.wallet.findFirst.mockResolvedValue(sender);
     prisma.wallet.findMany.mockResolvedValue([{ id: sender.id }]);
@@ -307,4 +308,73 @@ describe('TransfersService', () => {
       service.findAllForUser('user', 20, 'foreign-cursor'),
     ).rejects.toThrow('cursor not found');
   });
+
+  it('requires an idempotency key and an existing sender wallet', async () => {
+    await expect(service.executeTransfer('user', dto, '')).rejects.toThrow(
+      'header is required',
+    );
+    prisma.wallet.findFirst.mockResolvedValue(null);
+    await expect(service.executeTransfer('user', dto, 'key')).rejects.toThrow(
+      'Wallet not found',
+    );
+  });
+  it('propagates reservation failures and detects vanished race winners', async () => {
+    prisma.idempotencyKey.create.mockRejectedValueOnce(new Error('offline'));
+    await expect(service.executeTransfer('user', dto, 'key')).rejects.toThrow(
+      'offline',
+    );
+    prisma.idempotencyKey.create.mockRejectedValueOnce({ code: 'P2002' });
+    await expect(service.executeTransfer('user', dto, 'key')).rejects.toEqual({
+      code: 'P2002',
+    });
+  });
+  it('rejects vanished receiver rows and currency mismatches', async () => {
+    tx.$queryRaw.mockReset().mockResolvedValue([]);
+    await expect(service.executeTransfer('user', dto, 'key')).rejects.toThrow(
+      'Wallet not found',
+    );
+    tx.$queryRaw.mockImplementation(
+      async (_sql: TemplateStringsArray, id: string) => [
+        id === sender.id ? sender : { ...receiver, currency: 'USD' },
+      ],
+    );
+    await expect(service.executeTransfer('user', dto, 'key')).rejects.toThrow(
+      'must use NGN',
+    );
+  });
+  it('includes debits and null sums in the locked balance', async () => {
+    tx.ledgerEntry.groupBy.mockResolvedValue([
+      { direction: 'CREDIT', _sum: { amount: null } },
+      { direction: 'DEBIT', _sum: { amount: new Prisma.Decimal(1) } },
+    ]);
+    await expect(service.executeTransfer('user', dto, 'key')).rejects.toThrow(
+      'Insufficient balance',
+    );
+  });
+  it('stops retrying conflicts and preserves the original error if cleanup also fails', async () => {
+    prisma.$transaction.mockRejectedValue({ code: 'P2034' });
+    prisma.idempotencyKey.deleteMany.mockRejectedValue(
+      new Error('cleanup failed'),
+    );
+    await expect(service.executeTransfer('user', dto, 'key')).rejects.toEqual({
+      code: 'P2034',
+    });
+    expect(prisma.$transaction).toHaveBeenCalledTimes(3);
+  });
+  it('validates page sizes and handles valid final cursors', async () => {
+    await expect(service.findAllForUser('user', 0)).rejects.toThrow('Limit');
+    prisma.transfer.findFirst.mockResolvedValue(completed);
+    prisma.transfer.findMany.mockResolvedValue([completed]);
+    expect(
+      (await service.findAllForUser('user', 20, completed.id)).pagination
+        .nextCursor,
+    ).toBeNull();
+    expect(await service.findOneForUser(completed.id, 'user')).toBe(completed);
+  });
 });
+
+function mockFn(implementation?: (...args: never[]) => unknown): jest.Mock {
+  const fn = createMock<{ fn: jest.Mock }>().fn;
+  if (implementation) fn.mockImplementation(implementation);
+  return fn;
+}

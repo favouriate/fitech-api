@@ -1,3 +1,4 @@
+import { createMock } from '@golevelup/ts-jest';
 import { Logger, ValidationPipe } from '@nestjs/common';
 import type { INestApplication } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -34,17 +35,17 @@ const event: WebhookEvent = {
 describe('WebhooksService and signature ordering', () => {
   let service: WebhooksService;
   let app: INestApplication;
-  const tx = { webhookEvent: { create: vi.fn() } };
+  const tx = { webhookEvent: { create: mockFn() } };
   const prisma = {
-    $transaction: vi.fn(),
-    webhookEvent: { findUnique: vi.fn(), update: vi.fn() },
-    funding: { findUnique: vi.fn() },
+    $transaction: mockFn(),
+    webhookEvent: { findUnique: mockFn(), update: mockFn() },
+    funding: { findUnique: mockFn() },
   };
-  const funding = { confirmFunding: vi.fn() };
-  const config = { getOrThrow: vi.fn() };
+  const funding = { confirmFunding: mockFn() };
+  const config = { getOrThrow: mockFn() };
 
   beforeEach(async () => {
-    vi.resetAllMocks();
+    jest.resetAllMocks();
     config.getOrThrow.mockReturnValue(secret);
     tx.webhookEvent.create.mockResolvedValue(event);
     prisma.$transaction.mockImplementation(
@@ -78,10 +79,10 @@ describe('WebhooksService and signature ordering', () => {
         {
           provide: Logger,
           useValue: {
-            log: vi.fn(),
-            error: vi.fn(),
-            debug: vi.fn(),
-            warn: vi.fn(),
+            log: mockFn(),
+            error: mockFn(),
+            debug: mockFn(),
+            warn: mockFn(),
           },
         },
       ],
@@ -159,7 +160,7 @@ describe('WebhooksService and signature ordering', () => {
       .set('x-webhook-signature', signature)
       .send(raw)
       .expect(200, { status: 'ok' });
-    expect(funding.confirmFunding).toHaveBeenCalledOnce();
+    expect(funding.confirmFunding).toHaveBeenCalledTimes(1);
     expect(prisma.webhookEvent.update.mock.calls[0][0].data.status).toBe(
       'PROCESSED',
     );
@@ -198,6 +199,50 @@ describe('WebhooksService and signature ordering', () => {
     prisma.$transaction.mockRejectedValueOnce({ code: 'P2034' });
     await service.processEvent(payload);
     expect(prisma.$transaction).toHaveBeenCalledTimes(2);
-    expect(funding.confirmFunding).toHaveBeenCalledOnce();
+    expect(funding.confirmFunding).toHaveBeenCalledTimes(1);
+  });
+
+  it('acknowledges unknown event types without touching funding', async () => {
+    await service.processEvent({ ...payload, eventType: 'other.event' });
+    expect(funding.confirmFunding).not.toHaveBeenCalled();
+  });
+  it('rejects invalid references and missing funding', async () => {
+    await expect(
+      service.processEvent({ ...payload, data: { reference: 'bad' } }),
+    ).rejects.toThrow('must be a UUID');
+    prisma.funding.findUnique.mockResolvedValue(null);
+    await expect(service.processEvent(payload)).rejects.toThrow(
+      'Funding not found',
+    );
+  });
+  it('does not hide database failures or lost duplicate winners', async () => {
+    prisma.$transaction.mockRejectedValueOnce(new Error('database offline'));
+    await expect(service.processEvent(payload)).rejects.toThrow(
+      'database offline',
+    );
+    prisma.$transaction.mockRejectedValueOnce({ code: 'P2002' });
+    prisma.webhookEvent.findUnique.mockResolvedValue(null);
+    await expect(service.processEvent(payload)).rejects.toEqual({
+      code: 'P2002',
+    });
+  });
+  it('caps serialization retries', async () => {
+    prisma.$transaction.mockRejectedValue({ code: 'P2034' });
+    await expect(service.processEvent(payload)).rejects.toEqual({
+      code: 'P2034',
+    });
+    expect(prisma.$transaction).toHaveBeenCalledTimes(3);
+  });
+  it('marks non-Error failures without assuming a message or stack', async () => {
+    funding.confirmFunding.mockRejectedValue('provider unavailable');
+    await expect(service.processEvent(payload)).rejects.toBe(
+      'provider unavailable',
+    );
   });
 });
+
+function mockFn(implementation?: (...args: never[]) => unknown): jest.Mock {
+  const fn = createMock<{ fn: jest.Mock }>().fn;
+  if (implementation) fn.mockImplementation(implementation);
+  return fn;
+}

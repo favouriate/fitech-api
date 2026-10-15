@@ -1,3 +1,4 @@
+import { createMock } from '@golevelup/ts-jest';
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
@@ -26,21 +27,21 @@ describe('AuthService', () => {
 
   const prisma = {
     refreshToken: {
-      create: vi.fn(),
-      findUnique: vi.fn(),
-      updateMany: vi.fn(),
+      create: mockFn(),
+      findUnique: mockFn(),
+      updateMany: mockFn(),
     },
-    $transaction: vi.fn(),
+    $transaction: mockFn(),
   };
   const users = {
-    create: vi.fn(),
-    findByEmail: vi.fn(),
+    create: mockFn(),
+    findByEmail: mockFn(),
   };
   const jwt = {
-    signAsync: vi.fn().mockResolvedValue('signed-access-token'),
+    signAsync: mockFn().mockResolvedValue('signed-access-token'),
   };
   const config = {
-    getOrThrow: vi.fn((key: string) => {
+    getOrThrow: mockFn((key: string) => {
       const values: Record<string, string> = {
         'jwt.accessSecret': 'test-secret-at-least-32-characters-long',
         'jwt.accessExpiresIn': '15m',
@@ -51,7 +52,7 @@ describe('AuthService', () => {
   };
 
   beforeEach(async () => {
-    vi.clearAllMocks();
+    jest.clearAllMocks();
     users.create.mockImplementation(async (data) => ({ ...user, ...data }));
     users.findByEmail.mockResolvedValue({
       ...user,
@@ -156,7 +157,7 @@ describe('AuthService', () => {
     const rotated = await service.refresh(refreshToken, {});
     expect(rotated.user.id).toBe(user.id);
     expect(rotated.tokens.refreshToken).toHaveLength(128);
-    expect(prisma.$transaction).toHaveBeenCalledOnce();
+    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
     expect(prisma.refreshToken.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
@@ -179,4 +180,54 @@ describe('AuthService', () => {
       }),
     );
   });
+
+  it('rejects missing and expired refresh tokens', async () => {
+    prisma.refreshToken.findUnique.mockResolvedValueOnce(null);
+    await expect(service.refresh('token', {})).rejects.toThrow(
+      'Invalid refresh token',
+    );
+    prisma.refreshToken.findUnique.mockResolvedValueOnce({
+      id: 'id',
+      userId: user.id,
+      user,
+      revokedAt: null,
+      expiresAt: new Date(0),
+    });
+    await expect(service.refresh('token', {})).rejects.toThrow('expired');
+  });
+  it.each(['revoked', 'expired', 'missing'])(
+    'detects a rotation race with a %s token',
+    async (state) => {
+      prisma.refreshToken.findUnique.mockResolvedValueOnce({
+        id: 'id',
+        userId: user.id,
+        user,
+        revokedAt: null,
+        expiresAt: new Date(Date.now() + 60000),
+      });
+      prisma.refreshToken.updateMany.mockResolvedValueOnce({ count: 0 });
+      prisma.refreshToken.findUnique.mockResolvedValueOnce(
+        state === 'missing'
+          ? null
+          : {
+              revokedAt: state === 'revoked' ? new Date() : null,
+              expiresAt: new Date(0),
+            },
+      );
+      await expect(service.refresh('token', {})).rejects.toBeInstanceOf(
+        UnauthorizedException,
+      );
+    },
+  );
+  it('revokes current and all refresh sessions', async () => {
+    await service.logout('token');
+    await service.logoutAll(user.id);
+    expect(prisma.refreshToken.updateMany).toHaveBeenCalledTimes(2);
+  });
 });
+
+function mockFn(implementation?: (...args: never[]) => unknown): jest.Mock {
+  const fn = createMock<{ fn: jest.Mock }>().fn;
+  if (implementation) fn.mockImplementation(implementation);
+  return fn;
+}

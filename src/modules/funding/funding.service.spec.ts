@@ -1,3 +1,4 @@
+import { createMock } from '@golevelup/ts-jest';
 import { Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Test } from '@nestjs/testing';
@@ -44,25 +45,25 @@ const completed: Funding = {
 describe('FundingService', () => {
   let service: FundingService;
   const events: string[] = [];
-  const tx = { $queryRaw: vi.fn(), funding: { update: vi.fn() } };
+  const tx = { $queryRaw: mockFn(), funding: { update: mockFn() } };
   const prisma = {
     funding: {
-      create: vi.fn(),
-      update: vi.fn(),
-      findUnique: vi.fn(),
-      updateMany: vi.fn(),
+      create: mockFn(),
+      update: mockFn(),
+      findUnique: mockFn(),
+      updateMany: mockFn(),
     },
-    wallet: { findUnique: vi.fn() },
-    $transaction: vi.fn(),
+    wallet: { findUnique: mockFn() },
+    $transaction: mockFn(),
   };
-  const ledger = { recordEntry: vi.fn(), getBalance: vi.fn() };
-  const wallets = { findByUser: vi.fn() };
-  const provider = { initiate: vi.fn() };
-  const queue = { add: vi.fn() };
-  const logger = { log: vi.fn(), error: vi.fn() };
+  const ledger = { recordEntry: mockFn(), getBalance: mockFn() };
+  const wallets = { findByUser: mockFn() };
+  const provider = { initiate: mockFn() };
+  const queue = { add: mockFn() };
+  const logger = { log: mockFn(), error: mockFn() };
 
   beforeEach(async () => {
-    vi.resetAllMocks();
+    jest.resetAllMocks();
     events.length = 0;
     wallets.findByUser.mockResolvedValue({ ...wallet, balance: 0 });
     prisma.wallet.findUnique.mockResolvedValue(wallet);
@@ -223,12 +224,76 @@ describe('FundingService', () => {
     expect(args.data.status).toBe('EXPIRED');
     expect(ledger.recordEntry).not.toHaveBeenCalled();
   });
+
+  it('rejects inactive wallets and provider initiation failures', async () => {
+    wallets.findByUser.mockResolvedValueOnce({ ...wallet, status: 'FROZEN' });
+    await expect(service.initiate('user', 500)).rejects.toThrow('active NGN');
+    provider.initiate.mockResolvedValue({
+      providerRef: 'SIM-failed',
+      status: 'FAILED',
+    });
+    await service.initiate('user', 500);
+    expect(tx.funding.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: {
+          status: 'FAILED',
+          failureReason: 'Provider rejected funding initiation',
+        },
+      }),
+    );
+  });
+  it('returns balance for owned references and hides missing records and wallets', async () => {
+    expect(
+      (await service.findByReference(pending.reference, 'user')).walletBalance,
+    ).toBe(500.1234);
+    prisma.funding.findUnique.mockResolvedValueOnce(null);
+    await expect(
+      service.findByReference(pending.reference, 'user'),
+    ).rejects.toThrow('Funding not found');
+    prisma.wallet.findUnique.mockResolvedValue(null);
+    await expect(
+      service.findByReference(pending.reference, 'user'),
+    ).rejects.toThrow('Funding not found');
+  });
+  it('rejects missing funding rows for confirmation and failure', async () => {
+    tx.$queryRaw.mockReset().mockResolvedValue([]);
+    await expect(service.confirmFunding(pending.reference)).rejects.toThrow(
+      'Funding not found',
+    );
+    await expect(
+      service.failFunding(pending.reference, 'reason'),
+    ).rejects.toThrow('Funding not found');
+  });
+  it('rejects missing or closed wallet rows before crediting', async () => {
+    tx.$queryRaw
+      .mockReset()
+      .mockResolvedValueOnce([pending])
+      .mockResolvedValueOnce([]);
+    await expect(service.confirmFunding(pending.reference)).rejects.toThrow(
+      'Wallet not found',
+    );
+    tx.$queryRaw
+      .mockResolvedValueOnce([pending])
+      .mockResolvedValueOnce([{ ...wallet, status: 'CLOSED' }]);
+    await expect(service.confirmFunding(pending.reference)).rejects.toThrow(
+      'active NGN',
+    );
+    expect(ledger.recordEntry).not.toHaveBeenCalled();
+  });
+  it.each([0, -1, Infinity])(
+    'rejects invalid reconciliation age %s',
+    async (age) => {
+      await expect(service.expireStaleFundings(age)).rejects.toThrow(
+        'positive and finite',
+      );
+    },
+  );
 });
 
 describe('FundingController', () => {
   it('blocks simulation in production before ownership lookup or credit', async () => {
-    const findByReference = vi.fn();
-    const confirmFunding = vi.fn();
+    const findByReference = mockFn();
+    const confirmFunding = mockFn();
     const module = await Test.createTestingModule({
       controllers: [FundingController],
       providers: [
@@ -250,3 +315,9 @@ describe('FundingController', () => {
     expect(confirmFunding).not.toHaveBeenCalled();
   });
 });
+
+function mockFn(implementation?: (...args: never[]) => unknown): jest.Mock {
+  const fn = createMock<{ fn: jest.Mock }>().fn;
+  if (implementation) fn.mockImplementation(implementation);
+  return fn;
+}
