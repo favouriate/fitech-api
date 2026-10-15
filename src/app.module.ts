@@ -1,5 +1,5 @@
-import { Module } from '@nestjs/common';
-import { APP_GUARD } from '@nestjs/core';
+import { Logger, Module } from '@nestjs/common';
+import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { LoggerModule } from 'nestjs-pino';
@@ -23,9 +23,16 @@ import { NotificationsModule } from './modules/notifications/notifications.modul
 import { FundingModule } from './modules/funding/funding.module.js';
 import { Queue } from 'bullmq';
 import type { OnModuleInit } from '@nestjs/common';
+import { SentryGlobalFilter, SentryModule } from '@sentry/nestjs/setup';
+import { WebhooksModule } from './modules/webhooks/webhooks.module.js';
+import { MetricsModule } from './modules/metrics/metrics.module.js';
+import { MetricsInterceptor } from './modules/metrics/metrics.interceptor.js';
+import { AllExceptionsFilter } from './common/filters/all-exceptions.filter.js';
 
 @Module({
   imports: [
+    SentryModule.forRoot(),
+    MetricsModule,
     ConfigModule.forRoot({
       isGlobal: true,
       cache: true,
@@ -101,8 +108,13 @@ import type { OnModuleInit } from '@nestjs/common';
     TransfersModule,
     FundingModule,
     NotificationsModule,
+    WebhooksModule,
   ],
   providers: [
+    Logger,
+    { provide: SentryGlobalFilter, useClass: AllExceptionsFilter },
+    { provide: APP_FILTER, useExisting: SentryGlobalFilter },
+    { provide: APP_INTERCEPTOR, useExisting: MetricsInterceptor },
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     { provide: APP_GUARD, useClass: ThrottlerGuard },
   ],

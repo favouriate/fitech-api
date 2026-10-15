@@ -159,3 +159,18 @@ model Funding {
   @@index([status, createdAt])
   @@map("fundings")
 }
+
+model WebhookEvent {
+  id          String   @id @default(uuid())
+  eventId     String   @unique
+  provider    String   @default("SIMULATED")
+  eventType   String
+  payload     Json
+  status      String   @default("PENDING")
+  error       String?
+  createdAt   DateTime @default(now())
+  processedAt DateTime?
+
+  @@index([status, createdAt])
+  @@map("webhook_events")
+}

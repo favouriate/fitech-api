@@ -4,6 +4,7 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import {
@@ -21,6 +22,7 @@ import { PrismaService } from '../../prisma/prisma.service.js';
 import { LedgerService } from '../ledger/ledger.service.js';
 import { WalletsService } from '../wallets/wallets.service.js';
 import { CreateTransferDto } from './dto/create-transfer.dto.js';
+import { BusinessMetricsService } from '../metrics/business-metrics.service.js';
 
 export type PaginatedResult<T> = {
   data: T[];
@@ -100,6 +102,7 @@ export class TransfersService {
     private readonly logger: Logger,
     @InjectQueue('notifications')
     private readonly notifications: Queue<TransferNotification>,
+    @Optional() private readonly metrics?: BusinessMetricsService,
   ) {}
 
   async executeTransfer(
@@ -107,216 +110,222 @@ export class TransfersService {
     dto: CreateTransferDto,
     idempotencyKey: string,
   ): Promise<Transfer> {
-    if (!idempotencyKey?.trim()) {
-      throw new BadRequestException('Idempotency-Key header is required');
-    }
-    if (
-      !Number.isFinite(dto.amount) ||
-      dto.amount < 1 ||
-      dto.amount > Number.MAX_SAFE_INTEGER ||
-      new Prisma.Decimal(dto.amount).decimalPlaces() > 4
-    ) {
-      throw new BadRequestException(
-        'Amount must be at least 1 NGN, within the safe numeric range, and have at most 4 decimal places',
-      );
-    }
-    const requestHash = createHash('sha256')
-      .update(
-        JSON.stringify({
-          receiverWalletId: dto.receiverWalletId,
-          amount: dto.amount,
-        }),
-      )
-      .digest('hex');
-    const existing = await this.prisma.idempotencyKey.findUnique({
-      where: { key: idempotencyKey },
-    });
-    if (existing) {
-      const transfer = replayTransfer(existing, senderId, requestHash);
-      this.logger.log(`Reusing completed transfer: ${transfer.id}`);
-      return transfer;
-    }
-
-    const sender = await this.prisma.wallet.findFirst({
-      where: { userId: senderId, currency: 'NGN' },
-    });
-    if (!sender) {
-      throw new NotFoundException('Wallet not found');
-    }
-
-    let reservation: IdempotencyKey;
     try {
-      reservation = await this.prisma.idempotencyKey.create({
-        data: {
-          key: idempotencyKey,
-          userId: senderId,
-          requestHash,
-          status: IdempotencyStatus.STARTED,
-          expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
-        },
-      });
-    } catch (error: unknown) {
-      if (!hasPrismaCode(error, 'P2002')) throw error;
-      const winner = await this.prisma.idempotencyKey.findUnique({
-        where: { key: idempotencyKey },
-      });
-      if (!winner) throw error;
-      const transfer = replayTransfer(winner, senderId, requestHash);
-      this.logger.log(`Reusing completed transfer: ${transfer.id}`);
-      return transfer;
-    }
-
-    // DTO, ledger entries, and wallet balances all use NGN directly.
-    const amount = new Prisma.Decimal(dto.amount);
-    const reference = `TRF-${randomUUID()}`;
-    let transfer: Transfer | undefined;
-    try {
-      for (let attempt = 0; attempt < 3; attempt++) {
-        try {
-          transfer = await this.prisma.$transaction(
-            async (tx) => {
-              // Each transfer locks in the same order, including reverse transfers.
-              const walletIds = [
-                ...new Set([sender.id, dto.receiverWalletId]),
-              ].sort();
-              const locked = new Map<string, Wallet>();
-              for (const id of walletIds) {
-                const rows = await tx.$queryRaw<Wallet[]>`
-                SELECT * FROM "wallets" WHERE "id" = ${id} FOR UPDATE
-              `;
-                if (rows[0]) locked.set(id, rows[0]);
-              }
-              await this.walletsService.findOneForUser(sender.id, senderId);
-              const senderWallet = locked.get(sender.id);
-              const receiverWallet = locked.get(dto.receiverWalletId);
-              if (
-                !senderWallet ||
-                senderWallet.userId !== senderId ||
-                !receiverWallet
-              ) {
-                throw new NotFoundException('Wallet not found');
-              }
-              if (senderWallet.id === receiverWallet.id) {
-                throw new BadRequestException(
-                  'Cannot transfer to the same wallet',
-                );
-              }
-              if (
-                senderWallet.status !== WalletStatus.ACTIVE ||
-                receiverWallet.status !== WalletStatus.ACTIVE
-              ) {
-                throw new BadRequestException('Both wallets must be active');
-              }
-              if (
-                senderWallet.currency !== 'NGN' ||
-                receiverWallet.currency !== 'NGN'
-              ) {
-                throw new BadRequestException('Both wallets must use NGN');
-              }
-              // Do not use the service's external balance read for authorization:
-              // this aggregation must share the transaction's serializable snapshot.
-              const totals = await tx.ledgerEntry.groupBy({
-                by: ['direction'],
-                where: { walletId: sender.id },
-                _sum: { amount: true },
-              });
-              let balance = new Prisma.Decimal(0);
-              for (const row of totals) {
-                const total = row._sum.amount ?? new Prisma.Decimal(0);
-                balance =
-                  row.direction === Direction.CREDIT
-                    ? balance.plus(total)
-                    : balance.minus(total);
-              }
-              if (balance.lt(amount)) {
-                throw new BadRequestException('Insufficient balance');
-              }
-              await this.ledgerService.recordEntry(tx, {
-                walletId: sender.id,
-                amount,
-                direction: Direction.DEBIT,
-                reference,
-              });
-              await this.ledgerService.recordEntry(tx, {
-                walletId: receiverWallet.id,
-                amount,
-                direction: Direction.CREDIT,
-                reference,
-              });
-              const created = await tx.transfer.create({
-                data: {
-                  senderWalletId: sender.id,
-                  receiverWalletId: receiverWallet.id,
-                  amount,
-                  currency: 'NGN',
-                  status: TransferStatus.COMPLETED,
-                  reference,
-                },
-              });
-              await tx.idempotencyKey.update({
-                where: { id: reservation.id },
-                data: {
-                  status: IdempotencyStatus.FINISHED,
-                  responseBody: {
-                    ...created,
-                    amount: created.amount.toString(),
-                    createdAt: created.createdAt.toISOString(),
-                    updatedAt: created.updatedAt.toISOString(),
-                  },
-                },
-              });
-              return created;
-            },
-            { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
-          );
-          break;
-        } catch (error: unknown) {
-          if (!hasPrismaCode(error, 'P2034') || attempt === 2) throw error;
-          this.logger.warn(
-            'Retrying serialized transfer after a write conflict',
-          );
-        }
+      if (!idempotencyKey?.trim()) {
+        throw new BadRequestException('Idempotency-Key header is required');
       }
-      if (!transfer) throw new Error('Transfer transaction did not complete');
-    } catch (error: unknown) {
-      // A rolled-back request must be retryable. Never delete a committed key.
-      try {
-        await this.prisma.idempotencyKey.deleteMany({
-          where: { id: reservation.id, status: IdempotencyStatus.STARTED },
-        });
-      } catch {
-        this.logger.error(
-          `Failed to release transfer reservation: ${reservation.id}`,
+      if (
+        !Number.isFinite(dto.amount) ||
+        dto.amount < 1 ||
+        dto.amount > Number.MAX_SAFE_INTEGER ||
+        new Prisma.Decimal(dto.amount).decimalPlaces() > 4
+      ) {
+        throw new BadRequestException(
+          'Amount must be at least 1 NGN, within the safe numeric range, and have at most 4 decimal places',
         );
       }
+      const requestHash = createHash('sha256')
+        .update(
+          JSON.stringify({
+            receiverWalletId: dto.receiverWalletId,
+            amount: dto.amount,
+          }),
+        )
+        .digest('hex');
+      const existing = await this.prisma.idempotencyKey.findUnique({
+        where: { key: idempotencyKey },
+      });
+      if (existing) {
+        const transfer = replayTransfer(existing, senderId, requestHash);
+        this.logger.log(`Reusing completed transfer: ${transfer.id}`);
+        return transfer;
+      }
+
+      const sender = await this.prisma.wallet.findFirst({
+        where: { userId: senderId, currency: 'NGN' },
+      });
+      if (!sender) {
+        throw new NotFoundException('Wallet not found');
+      }
+
+      let reservation: IdempotencyKey;
+      try {
+        reservation = await this.prisma.idempotencyKey.create({
+          data: {
+            key: idempotencyKey,
+            userId: senderId,
+            requestHash,
+            status: IdempotencyStatus.STARTED,
+            expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+          },
+        });
+      } catch (error: unknown) {
+        if (!hasPrismaCode(error, 'P2002')) throw error;
+        const winner = await this.prisma.idempotencyKey.findUnique({
+          where: { key: idempotencyKey },
+        });
+        if (!winner) throw error;
+        const transfer = replayTransfer(winner, senderId, requestHash);
+        this.logger.log(`Reusing completed transfer: ${transfer.id}`);
+        return transfer;
+      }
+
+      // DTO, ledger entries, and wallet balances all use NGN directly.
+      const amount = new Prisma.Decimal(dto.amount);
+      const reference = `TRF-${randomUUID()}`;
+      let transfer: Transfer | undefined;
+      try {
+        for (let attempt = 0; attempt < 3; attempt++) {
+          try {
+            transfer = await this.prisma.$transaction(
+              async (tx) => {
+                // Each transfer locks in the same order, including reverse transfers.
+                const walletIds = [
+                  ...new Set([sender.id, dto.receiverWalletId]),
+                ].sort();
+                const locked = new Map<string, Wallet>();
+                for (const id of walletIds) {
+                  const rows = await tx.$queryRaw<Wallet[]>`
+                SELECT * FROM "wallets" WHERE "id" = ${id} FOR UPDATE
+              `;
+                  if (rows[0]) locked.set(id, rows[0]);
+                }
+                await this.walletsService.findOneForUser(sender.id, senderId);
+                const senderWallet = locked.get(sender.id);
+                const receiverWallet = locked.get(dto.receiverWalletId);
+                if (
+                  !senderWallet ||
+                  senderWallet.userId !== senderId ||
+                  !receiverWallet
+                ) {
+                  throw new NotFoundException('Wallet not found');
+                }
+                if (senderWallet.id === receiverWallet.id) {
+                  throw new BadRequestException(
+                    'Cannot transfer to the same wallet',
+                  );
+                }
+                if (
+                  senderWallet.status !== WalletStatus.ACTIVE ||
+                  receiverWallet.status !== WalletStatus.ACTIVE
+                ) {
+                  throw new BadRequestException('Both wallets must be active');
+                }
+                if (
+                  senderWallet.currency !== 'NGN' ||
+                  receiverWallet.currency !== 'NGN'
+                ) {
+                  throw new BadRequestException('Both wallets must use NGN');
+                }
+                // Do not use the service's external balance read for authorization:
+                // this aggregation must share the transaction's serializable snapshot.
+                const totals = await tx.ledgerEntry.groupBy({
+                  by: ['direction'],
+                  where: { walletId: sender.id },
+                  _sum: { amount: true },
+                });
+                let balance = new Prisma.Decimal(0);
+                for (const row of totals) {
+                  const total = row._sum.amount ?? new Prisma.Decimal(0);
+                  balance =
+                    row.direction === Direction.CREDIT
+                      ? balance.plus(total)
+                      : balance.minus(total);
+                }
+                if (balance.lt(amount)) {
+                  throw new BadRequestException('Insufficient balance');
+                }
+                await this.ledgerService.recordEntry(tx, {
+                  walletId: sender.id,
+                  amount,
+                  direction: Direction.DEBIT,
+                  reference,
+                });
+                await this.ledgerService.recordEntry(tx, {
+                  walletId: receiverWallet.id,
+                  amount,
+                  direction: Direction.CREDIT,
+                  reference,
+                });
+                const created = await tx.transfer.create({
+                  data: {
+                    senderWalletId: sender.id,
+                    receiverWalletId: receiverWallet.id,
+                    amount,
+                    currency: 'NGN',
+                    status: TransferStatus.COMPLETED,
+                    reference,
+                  },
+                });
+                await tx.idempotencyKey.update({
+                  where: { id: reservation.id },
+                  data: {
+                    status: IdempotencyStatus.FINISHED,
+                    responseBody: {
+                      ...created,
+                      amount: created.amount.toString(),
+                      createdAt: created.createdAt.toISOString(),
+                      updatedAt: created.updatedAt.toISOString(),
+                    },
+                  },
+                });
+                return created;
+              },
+              { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+            );
+            break;
+          } catch (error: unknown) {
+            if (!hasPrismaCode(error, 'P2034') || attempt === 2) throw error;
+            this.logger.warn(
+              'Retrying serialized transfer after a write conflict',
+            );
+          }
+        }
+        if (!transfer) throw new Error('Transfer transaction did not complete');
+      } catch (error: unknown) {
+        // A rolled-back request must be retryable. Never delete a committed key.
+        try {
+          await this.prisma.idempotencyKey.deleteMany({
+            where: { id: reservation.id, status: IdempotencyStatus.STARTED },
+          });
+        } catch {
+          this.logger.error(
+            `Failed to release transfer reservation: ${reservation.id}`,
+          );
+        }
+        throw error;
+      }
+
+      this.logger.log(`Transfer completed: ${transfer.id}`);
+      this.metrics?.recordTransfer('success');
+      try {
+        await this.notifications.add(
+          'transfer-completed',
+          {
+            transferId: transfer.id,
+            senderWalletId: transfer.senderWalletId,
+            receiverWalletId: transfer.receiverWalletId,
+            amount: transfer.amount.toString(),
+            currency: transfer.currency,
+            reference: transfer.reference,
+          },
+          {
+            jobId: transfer.id,
+            attempts: 5,
+            backoff: { type: 'exponential', delay: 1000 },
+          },
+        );
+      } catch {
+        // The money has committed; a queue failure must not report transfer failure.
+        this.logger.error(
+          `Transfer committed but notification enqueue failed: ${transfer.id}`,
+        );
+      }
+      return transfer;
+    } catch (error: unknown) {
+      this.metrics?.recordTransfer('failed');
       throw error;
     }
-
-    this.logger.log(`Transfer completed: ${transfer.id}`);
-    try {
-      await this.notifications.add(
-        'transfer-completed',
-        {
-          transferId: transfer.id,
-          senderWalletId: transfer.senderWalletId,
-          receiverWalletId: transfer.receiverWalletId,
-          amount: transfer.amount.toString(),
-          currency: transfer.currency,
-          reference: transfer.reference,
-        },
-        {
-          jobId: transfer.id,
-          attempts: 5,
-          backoff: { type: 'exponential', delay: 1000 },
-        },
-      );
-    } catch {
-      // The money has committed; a queue failure must not report transfer failure.
-      this.logger.error(
-        `Transfer committed but notification enqueue failed: ${transfer.id}`,
-      );
-    }
-    return transfer;
   }
 
   async findAllForUser(
