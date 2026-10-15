@@ -68,3 +68,5 @@ response*.json
 .env.bak
 .env.backup
 .env.local
+coverage/
+.env.test

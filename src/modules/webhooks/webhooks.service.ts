@@ -54,7 +54,13 @@ export class WebhooksService {
       logger.warn('[VERIFY] signature header missing');
       return false;
     }
-    const secret = this.config.getOrThrow<string>('WEBHOOK_SECRET');
+    let secret: string;
+    try {
+      secret = this.config.getOrThrow<string>('WEBHOOK_SECRET');
+    } catch {
+      logger.error('[VERIFY] WEBHOOK_SECRET is not configured');
+      return false;
+    }
     logger.debug(
       `[VERIFY] secret length=${secret.length} preview=${secret.slice(0, 8)}...`,
     );
@@ -75,6 +81,10 @@ export class WebhooksService {
     logger.debug(
       `[VERIFY] provided=${provided.slice(0, 16)}... (len=${provided.length})`,
     );
+    if (!/^[a-fA-F0-9]{64}$/.test(provided)) {
+      logger.warn('[VERIFY] signature must contain exactly 64 hexadecimal characters');
+      return false;
+    }
 
     const providedBuf = Buffer.from(provided, 'hex');
     const expectedBuf = Buffer.from(expected, 'hex');
