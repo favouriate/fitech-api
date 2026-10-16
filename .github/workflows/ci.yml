@@ -16,7 +16,7 @@ concurrency:
 
 jobs:
   lint-and-test:
-    name: Lint & Test
+    name: Lint & Test (Node 24)
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
@@ -32,14 +32,15 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Lint & Test 22
+      # Jest's require(esm) support requires Node 24.9+ for NestJS 12.
+      - name: Setup Node.js 24
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: '24'
           cache: 'npm'
 
       # Note: npm install (not npm ci) because lockfile format can drift
-      # between npm versions. Local dev uses npm 11; CI uses npm 10 (Node 22).
+      # between npm versions. Keep the committed lockfile as the baseline.
       - name: Install dependencies
         run: npm install --no-audit --no-fund
 
