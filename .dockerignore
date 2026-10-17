@@ -1,0 +1,50 @@
+# Dependencies
+node_modules
+node_modules.bak
+npm-debug.log*
+
+# Build artifacts
+dist
+coverage
+*.tsbuildinfo
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# Git
+.git
+.gitignore
+
+# Tests
+test
+*.spec.ts
+*.e2e-spec.ts
+
+# CI
+.github
+
+# Docs
+README.md
+docs
+
+# Editor
+.vscode
+.idea
+*.swp
+
+# Local dev artifacts
+login*.json
+response*.json
+user*.json
+wallet*.json
+funding*.json
+attacker.json
+payload.json
+signature.txt
+postman
+
+# Docker
+Dockerfile
+docker-compose*.yml
