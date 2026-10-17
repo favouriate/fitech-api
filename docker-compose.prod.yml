@@ -1,0 +1,69 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: fitech_postgres_prod
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: fitech
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD for production}
+      POSTGRES_DB: fitech_db
+    volumes:
+      - pgdata_prod:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U fitech -d fitech_db']
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - fitech-net
+
+  redis:
+    image: redis:7-alpine
+    container_name: fitech_redis_prod
+    restart: unless-stopped
+    command: ['redis-server', '--appendonly', 'yes']
+    volumes:
+      - redisdata_prod:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - fitech-net
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: fitech_api_prod
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DATABASE_URL: 'postgresql://fitech:${DB_PASSWORD:?Set DB_PASSWORD for production}@postgres:5432/fitech_db?schema=public'
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:?Set JWT_ACCESS_SECRET (at least 32 characters)}
+      JWT_ACCESS_EXPIRES_IN: 15m
+      JWT_REFRESH_EXPIRES_IN: 7d
+      WEBHOOK_SECRET: ${WEBHOOK_SECRET:?Set WEBHOOK_SECRET (at least 16 characters)}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:3000}
+      SENTRY_DSN: ${SENTRY_DSN:-}
+    ports:
+      - '3000:3000'
+    networks:
+      - fitech-net
+
+volumes:
+  pgdata_prod:
+  redisdata_prod:
+
+networks:
+  fitech-net:
+    driver: bridge

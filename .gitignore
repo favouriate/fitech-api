@@ -70,3 +70,5 @@ response*.json
 .env.local
 coverage/
 .env.test
+.env.prod
+.env.*.local
