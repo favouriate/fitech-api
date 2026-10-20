@@ -1,4 +1,5 @@
 #!/bin/sh
+echo "🚀 ENTRYPOINT STARTED"
 set -e
 
 echo "Running database migrations..."
