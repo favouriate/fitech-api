@@ -85,7 +85,7 @@ async function bootstrap(): Promise<void> {
   // CRITICAL in production — Kubernetes sends SIGTERM before killing pods.
   app.enableShutdownHooks();
 
-  await app.listen(port);
+  await app.listen(port, '0.0.0.0');
 
   const logger = new Logger('Bootstrap');
   logger.log(`🚀 Server running at http://localhost:${port}`);
