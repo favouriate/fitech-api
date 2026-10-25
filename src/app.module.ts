@@ -99,7 +99,10 @@ import { AllExceptionsFilter } from './common/filters/all-exceptions.filter.js';
           host: process.env.REDIS_HOST,
           port: parseInt(process.env.REDIS_PORT ?? '6379', 10),
           password: process.env.REDIS_PASSWORD,
-          tls: {},
+          tls: {
+            servername: process.env.REDIS_HOST,
+            rejectUnauthorized: false,
+          },
           maxRetriesPerRequest: null,
           enableReadyCheck: false,
           retryStrategy: (times: number) => Math.min(times * 50, 2000),
