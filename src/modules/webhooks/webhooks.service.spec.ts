@@ -175,6 +175,24 @@ describe('WebhooksService and signature ordering', () => {
     expect(funding.confirmFunding).not.toHaveBeenCalled();
   });
 
+  it.each(['FAILED', 'PENDING'])(
+    'reprocesses a duplicate %s event',
+    async (status) => {
+      tx.webhookEvent.create.mockRejectedValue({ code: 'P2002' });
+      prisma.webhookEvent.findUnique.mockResolvedValue({ ...event, status });
+      await service.processEvent(payload);
+      expect(funding.confirmFunding).toHaveBeenCalledTimes(1);
+      expect(prisma.webhookEvent.update).toHaveBeenCalledWith({
+        where: { id: event.id },
+        data: {
+          status: 'PROCESSED',
+          processedAt: expect.any(Date),
+          error: null,
+        },
+      });
+    },
+  );
+
   it('does not double-credit already completed funding for a new event ID', async () => {
     prisma.funding.findUnique.mockResolvedValue({
       reference,

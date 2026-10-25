@@ -21,7 +21,7 @@ import { BullModule, InjectQueue } from '@nestjs/bullmq';
 import { TransfersModule } from './modules/transfers/transfers.module.js';
 import { NotificationsModule } from './modules/notifications/notifications.module.js';
 import { FundingModule } from './modules/funding/funding.module.js';
-import { Queue } from 'bullmq';
+import { Queue, type ConnectionOptions } from 'bullmq';
 import type { OnModuleInit } from '@nestjs/common';
 import { SentryGlobalFilter, SentryModule } from '@sentry/nestjs/setup';
 import { WebhooksModule } from './modules/webhooks/webhooks.module.js';
@@ -95,9 +95,9 @@ import { AllExceptionsFilter } from './common/filters/all-exceptions.filter.js';
     BullModule.forRootAsync({
       inject: [ConfigService],
       useFactory: (config: ConfigService) => ({
-        connection: {
-          host: config.get<string>('redis.host') ?? 'localhost',
-          port: config.get<number>('redis.port') ?? 6379,
+        connection: config.get<ConnectionOptions>('redis') ?? {
+          host: 'localhost',
+          port: 6379,
         },
       }),
     }),

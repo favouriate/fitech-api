@@ -30,7 +30,7 @@ npx prisma generate
 
 Copy `.env.example` to `.env` and replace `JWT_ACCESS_SECRET` with a random
 secret of at least 32 characters. The example database URL matches the local
-PostgreSQL port configured in `docker-compose.yml`.
+PostgreSQL service. For `docker-compose.yml`, use host port 5433.
 
 Start the local dependencies and API:
 
@@ -127,3 +127,20 @@ Nest is an MIT-licensed open source project. It can grow thanks to the sponsors 
 ## License
 
 Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+
+## Production startup
+
+Run from `fitech-api`:
+
+```sh
+docker compose --env-file .env.prod -f docker-compose.prod.yml up --build -d
+```
+
+The container runs migrations before starting the API. `.env.prod` supplies
+DB_PASSWORD, JWT_ACCESS_SECRET, WEBHOOK_SECRET and ALLOWED_ORIGINS to Compose.
+For direct hosting, set DATABASE_URL and those application secrets in the host
+configuration, run `npx prisma migrate deploy`, then `npm run start:prod`.
+Use Node 24.9 or newer. Cloud Redis supports REDIS_URL (redis:// or rediss://),
+or REDIS_HOST/REDIS_PORT with optional REDIS_PASSWORD and REDIS_TLS=true.
+The GitHub Deploy workflow publishes an image to GHCR; server rollout must be
+configured for your hosting provider separately.

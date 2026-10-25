@@ -36,67 +36,28 @@ export class WebhooksService {
     rawBody: Buffer | undefined,
     signature: string | undefined,
   ): boolean {
-    const logger = new Logger('WebhookSignature');
-
-    // ── Diagnostic logging ────────────────────────────────
-    logger.debug(
-      `[VERIFY] rawBody type=${typeof rawBody} isBuffer=${Buffer.isBuffer(rawBody)} length=${rawBody?.length ?? 'N/A'}`,
-    );
-    logger.debug(
-      `[VERIFY] signature length=${signature?.length ?? 'N/A'} value=${signature?.slice(0, 16)}...`,
-    );
-
-    if (!rawBody || !Buffer.isBuffer(rawBody)) {
-      logger.warn('[VERIFY] rawBody missing or not a Buffer — cannot verify');
-      return false;
-    }
-    if (!signature) {
-      logger.warn('[VERIFY] signature header missing');
-      return false;
-    }
+    if (!rawBody || !Buffer.isBuffer(rawBody) || !signature) return false;
     let secret: string;
     try {
       secret = this.config.getOrThrow<string>('WEBHOOK_SECRET');
     } catch {
-      logger.error('[VERIFY] WEBHOOK_SECRET is not configured');
+      this.logger.error('WEBHOOK_SECRET is not configured');
       return false;
     }
-    logger.debug(
-      `[VERIFY] secret length=${secret.length} preview=${secret.slice(0, 8)}...`,
-    );
-
     const expected = createHmac('sha256', secret).update(rawBody).digest('hex');
-    logger.debug(
-      `[VERIFY] expected=${expected.slice(0, 16)}... (len=${expected.length})`,
-    );
-
-    // Show the first 100 chars of rawBody so we can spot whitespace differences
-    const preview = rawBody.toString('utf8').slice(0, 100);
-    logger.debug(`[VERIFY] rawBody preview: ${preview}`);
 
     // Strip optional "sha256=" prefix
     const provided = signature.startsWith('sha256=')
       ? signature.slice(7)
       : signature;
-    logger.debug(
-      `[VERIFY] provided=${provided.slice(0, 16)}... (len=${provided.length})`,
-    );
     if (!/^[a-fA-F0-9]{64}$/.test(provided)) {
-      logger.warn('[VERIFY] signature must contain exactly 64 hexadecimal characters');
       return false;
     }
 
     const providedBuf = Buffer.from(provided, 'hex');
     const expectedBuf = Buffer.from(expected, 'hex');
-    logger.debug(
-      `[VERIFY] buffer lengths: expected=${expectedBuf.length} provided=${providedBuf.length}`,
-    );
-    if (providedBuf.length !== expectedBuf.length) {
-      logger.warn('[VERIFY] length mismatch — cannot timingSafeEqual');
-      return false;
-    }
+    if (providedBuf.length !== expectedBuf.length) return false;
     const match = timingSafeEqual(providedBuf, expectedBuf);
-    logger.debug(`[VERIFY] match=${match}`);
     return match;
   }
 
@@ -136,8 +97,20 @@ export class WebhooksService {
               where: { eventId: payload.eventId },
             });
             if (!existing) throw error;
-            this.logger.log(`Duplicate webhook acknowledged: ${existing.id}`);
-            return existing;
+            const previous = existing.payload as Record<string, unknown>;
+            const previousData = previous.data as
+              Record<string, unknown> | undefined;
+            if (
+              existing.eventType !== payload.eventType ||
+              previousData?.reference !== payload.data.reference
+            ) {
+              throw new ConflictException(
+                'Webhook event ID is bound to another event',
+              );
+            }
+            if (existing.status === 'PROCESSED') return existing;
+            event = existing;
+            break;
           }
           if (!hasCode(error, 'P2034') || attempt === 2) throw error;
         }
@@ -172,7 +145,7 @@ export class WebhooksService {
         }
         const processed = await this.prisma.webhookEvent.update({
           where: { id: event.id },
-          data: { status: 'PROCESSED', processedAt: new Date() },
+          data: { status: 'PROCESSED', processedAt: new Date(), error: null },
         });
         this.logger.log(`Webhook processed: ${event.id}`);
         return processed;
