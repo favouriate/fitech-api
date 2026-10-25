@@ -21,7 +21,7 @@ import { BullModule, InjectQueue } from '@nestjs/bullmq';
 import { TransfersModule } from './modules/transfers/transfers.module.js';
 import { NotificationsModule } from './modules/notifications/notifications.module.js';
 import { FundingModule } from './modules/funding/funding.module.js';
-import { Queue, type ConnectionOptions } from 'bullmq';
+import { Queue } from 'bullmq';
 import type { OnModuleInit } from '@nestjs/common';
 import { SentryGlobalFilter, SentryModule } from '@sentry/nestjs/setup';
 import { WebhooksModule } from './modules/webhooks/webhooks.module.js';
@@ -94,10 +94,15 @@ import { AllExceptionsFilter } from './common/filters/all-exceptions.filter.js';
     PrismaModule,
     BullModule.forRootAsync({
       inject: [ConfigService],
-      useFactory: (config: ConfigService) => ({
-        connection: config.get<ConnectionOptions>('redis') ?? {
-          host: 'localhost',
-          port: 6379,
+      useFactory: () => ({
+        connection: {
+          host: process.env.REDIS_HOST,
+          port: parseInt(process.env.REDIS_PORT ?? '6379', 10),
+          password: process.env.REDIS_PASSWORD,
+          tls: {},
+          maxRetriesPerRequest: null,
+          enableReadyCheck: false,
+          retryStrategy: (times: number) => Math.min(times * 50, 2000),
         },
       }),
     }),
