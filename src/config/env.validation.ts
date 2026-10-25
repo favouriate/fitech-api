@@ -12,7 +12,11 @@ export const envSchema = z.object({
   NODE_ENV: z
     .enum(['development', 'test', 'production'])
     .default('development'),
-  PORT: z.coerce.number().int().positive().max(65535).default(3000),
+  PORT: z.preprocess(
+    (val) =>
+      val === '' || val === undefined || val === null ? 3000 : Number(val),
+    z.number().int().positive(),
+  ),
   ALLOWED_ORIGINS: z
     .string()
     .default('http://localhost:3000')
