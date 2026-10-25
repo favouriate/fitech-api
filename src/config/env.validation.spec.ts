@@ -36,6 +36,47 @@ describe('Environment validation and registered configuration', () => {
   ])('rejects invalid environment input %j', (invalid) => {
     expect(envSchema.safeParse({ ...valid, ...invalid }).success).toBe(false);
   });
+  it('supports authenticated Redis TLS URLs', () => {
+    const before = { ...process.env };
+    try {
+      process.env.REDIS_URL =
+        'rediss://default:p%40ss@cache.example.com:6380/2';
+      expect(redisConfig()).toMatchObject({
+        host: 'cache.example.com',
+        port: 6380,
+        username: 'default',
+        password: 'p@ss',
+        db: 2,
+        tls: {},
+      });
+      expect(
+        envSchema.safeParse({
+          ...valid,
+          REDIS_URL: 'https://cache.example.com',
+        }).success,
+      ).toBe(false);
+    } finally {
+      process.env = before;
+    }
+  });
+  it('enables TLS for an Upstash host without requiring a URL or TLS flag', () => {
+    const before = { ...process.env };
+    try {
+      delete process.env.REDIS_URL;
+      delete process.env.REDIS_TLS;
+      process.env.REDIS_HOST = 'example.upstash.io';
+      process.env.REDIS_PORT = '6379';
+      expect(redisConfig()).toMatchObject({
+        host: 'example.upstash.io',
+        port: 6379,
+        tls: {},
+      });
+      process.env.REDIS_HOST = 'localhost';
+      expect(redisConfig()).not.toHaveProperty('tls');
+    } finally {
+      process.env = before;
+    }
+  });
   it('exposes application, JWT, Redis and throttle configuration', () => {
     const prior = { ...process.env };
     try {
@@ -44,13 +85,13 @@ describe('Environment validation and registered configuration', () => {
       delete process.env.REDIS_PORT;
       expect(appConfig()).toBeDefined();
       expect(jwtConfig()).toBeDefined();
-      expect(redisConfig()).toEqual({ host: 'localhost', port: 6379 });
+      expect(redisConfig()).toMatchObject({ host: 'localhost', port: 6379 });
       expect(throttlerConfig().throttlers).toHaveLength(4);
       process.env.PORT = '3456';
       process.env.REDIS_HOST = 'redis';
       process.env.REDIS_PORT = '6380';
       expect(appConfig().port).toBe(3456);
-      expect(redisConfig()).toEqual({ host: 'redis', port: 6380 });
+      expect(redisConfig()).toMatchObject({ host: 'redis', port: 6380 });
     } finally {
       process.env = prior;
     }

@@ -35,6 +35,16 @@ export const envSchema = z.object({
     .min(32, 'JWT_ACCESS_SECRET must be at least 32 characters'),
   JWT_ACCESS_EXPIRES_IN: durationSchema.default('15m'),
   JWT_REFRESH_EXPIRES_IN: durationSchema.default('7d'),
+  REDIS_URL: z
+    .string()
+    .url()
+    .refine(
+      (value) => ['redis:', 'rediss:'].includes(new URL(value).protocol),
+      'REDIS_URL must use redis:// or rediss://',
+    )
+    .optional(),
+  REDIS_PASSWORD: z.string().optional(),
+  REDIS_TLS: z.enum(['true', 'false']).optional(),
   REDIS_HOST: z.string().min(1).default('localhost'),
   REDIS_PORT: z.coerce.number().int().positive().max(65535).default(6379),
   WEBHOOK_SECRET: z
