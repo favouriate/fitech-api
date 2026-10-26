@@ -23,7 +23,7 @@ export default registerAs('redis', (): ConnectionOptions => {
     ...(url?.protocol === 'rediss:' ||
     process.env.REDIS_TLS === 'true' ||
     host.toLowerCase().endsWith('.upstash.io')
-      ? { tls: {} }
+      ? { tls: { servername: host } }
       : {}),
     connectTimeout: 10000,
   };

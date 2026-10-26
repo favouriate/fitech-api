@@ -14,7 +14,7 @@ async function bootstrap(): Promise<void> {
   });
 
   const config = app.get(ConfigService);
-  const port = config.get<number>('app.port') ?? 3000;
+  const port = process.env.PORT || 3000;
   const nodeEnv = config.get<string>('app.nodeEnv') ?? 'development';
   const allowedOrigins = config.get<string[]>('app.allowedOrigins') ?? [];
 

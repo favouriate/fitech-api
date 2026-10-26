@@ -94,18 +94,11 @@ import { AllExceptionsFilter } from './common/filters/all-exceptions.filter.js';
     PrismaModule,
     BullModule.forRootAsync({
       inject: [ConfigService],
-      useFactory: () => ({
+      useFactory: (configService: ConfigService) => ({
         connection: {
-          host: process.env.REDIS_HOST,
-          port: parseInt(process.env.REDIS_PORT ?? '6379', 10),
-          password: process.env.REDIS_PASSWORD,
-          tls: {
-            servername: process.env.REDIS_HOST,
-            rejectUnauthorized: false,
-          },
+          url: configService.get<string>('REDIS_URL'),
           maxRetriesPerRequest: null,
           enableReadyCheck: false,
-          retryStrategy: (times: number) => Math.min(times * 50, 2000),
         },
       }),
     }),
