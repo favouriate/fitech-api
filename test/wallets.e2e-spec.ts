@@ -28,7 +28,10 @@ describe('Wallet authorization and balances', () => {
       .get('/v1/wallets/me')
       .auth(alice.accessToken, { type: 'bearer' })
       .expect(200);
-    expect(walletSchema.parse(mine.body)).toEqual({ id: walletId, balance: 0 });
+    expect(walletSchema.parse(mine.body)).toEqual({
+      id: walletId,
+      balance: '0.0000',
+    });
     await request(app.getHttpServer())
       .get(`/v1/wallets/${walletId}`)
       .auth(bob.accessToken, { type: 'bearer' })

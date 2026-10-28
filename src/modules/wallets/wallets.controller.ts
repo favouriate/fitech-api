@@ -45,7 +45,7 @@ export class WalletsController {
     @Body() dto: CreateWalletDto,
   ): Promise<WalletResponseDto> {
     const wallet = await this.wallets.create(user.id, dto.currency);
-    return { ...wallet, balance: 0 };
+    return { ...wallet, balance: '0.0000' };
   }
 
   @Get('me')
@@ -56,7 +56,8 @@ export class WalletsController {
   async mine(
     @CurrentUser() user: AuthenticatedUser,
   ): Promise<WalletResponseDto | null> {
-    return this.wallets.findByUser(user.id);
+    const wallet = await this.wallets.findByUser(user.id);
+    return wallet ? { ...wallet, balance: wallet.balance.toFixed(4) } : null;
   }
 
   @Get(':id')
@@ -69,7 +70,8 @@ export class WalletsController {
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: AuthenticatedUser,
   ): Promise<WalletResponseDto> {
-    return this.wallets.findOneForUser(id, user.id);
+    const wallet = await this.wallets.findOneForUser(id, user.id);
+    return { ...wallet, balance: wallet.balance.toFixed(4) };
   }
 
   @Get(':id/ledger')

@@ -17,7 +17,7 @@ describe('LedgerService', () => {
 
   it('returns zero for an empty wallet', async () => {
     groupBy.mockResolvedValue([]);
-    expect(await service.getBalance('wallet')).toBe(0);
+    expect((await service.getBalance('wallet')).toFixed(4)).toBe('0.0000');
   });
 
   it('computes credits minus debits', async () => {
@@ -25,7 +25,7 @@ describe('LedgerService', () => {
       { direction: 'CREDIT', _sum: { amount: new Prisma.Decimal(10_000) } },
       { direction: 'DEBIT', _sum: { amount: new Prisma.Decimal(500) } },
     ]);
-    expect(await service.getBalance('wallet')).toBe(9500);
+    expect((await service.getBalance('wallet')).toFixed(4)).toBe('9500.0000');
   });
 
   it('returns a Map with zero balances for wallets without entries', async () => {
@@ -33,8 +33,8 @@ describe('LedgerService', () => {
     const balances = await service.getBalances(['alice', 'bob']);
     expect(balances).toBeInstanceOf(Map);
     expect([...balances]).toEqual([
-      ['alice', 0],
-      ['bob', 0],
+      ['alice', new Prisma.Decimal(0)],
+      ['bob', new Prisma.Decimal(0)],
     ]);
     expect(prisma.ledgerEntry.groupBy).toHaveBeenCalledTimes(1);
   });
@@ -54,10 +54,32 @@ describe('LedgerService', () => {
     ]);
     expect(await service.getBalances(['alice', 'bob'])).toEqual(
       new Map([
-        ['alice', 900],
-        ['bob', 0],
+        ['alice', new Prisma.Decimal(900)],
+        ['bob', new Prisma.Decimal(0)],
       ]),
     );
+  });
+
+  it('preserves fractional balances after large cumulative credits and debits', async () => {
+    const rows = [
+      {
+        walletId: 'alice',
+        direction: 'CREDIT',
+        _sum: { amount: new Prisma.Decimal('100000000000000.0001') },
+      },
+      {
+        walletId: 'alice',
+        direction: 'DEBIT',
+        _sum: { amount: new Prisma.Decimal('100000000000000.0000') },
+      },
+    ];
+    groupBy.mockResolvedValue(rows);
+    const balance = await service.getBalance('alice');
+    expect(balance).toBeInstanceOf(Prisma.Decimal);
+    expect(balance.toFixed(4)).toBe('0.0001');
+    const balances = await service.getBalances(['alice', 'bob']);
+    expect(balances.get('alice')?.toFixed(4)).toBe('0.0001');
+    expect(balances.get('bob')?.toFixed(4)).toBe('0.0000');
   });
 
   it('skips the database for an empty wallet list', async () => {

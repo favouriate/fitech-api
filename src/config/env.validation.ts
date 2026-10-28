@@ -15,7 +15,7 @@ export const envSchema = z.object({
   PORT: z.preprocess(
     (val) =>
       val === '' || val === undefined || val === null ? 3000 : Number(val),
-    z.number().int().positive(),
+    z.number().int().min(1).max(65535),
   ),
   ALLOWED_ORIGINS: z
     .string()

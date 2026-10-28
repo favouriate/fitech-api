@@ -12,6 +12,7 @@ export default async function setup(): Promise<void> {
     Object.assign(process.env, {
       NODE_ENV: 'test',
       DATABASE_URL: postgres.getConnectionUri(),
+      REDIS_URL: `redis://${redis.getHost()}:${redis.getPort()}`,
       REDIS_HOST: redis.getHost(),
       REDIS_PORT: String(redis.getPort()),
       JWT_ACCESS_SECRET: 'e2e-only-access-secret-at-least-32-characters',

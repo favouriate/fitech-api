@@ -39,7 +39,7 @@ export class FundingStatusResponseDto extends FundingResponseDto {
   @ApiProperty({
     description:
       'Current wallet balance after applying this funding (if completed)',
-    example: 5000,
+    example: '5000.0000',
   })
-  walletBalance!: number;
+  walletBalance!: string;
 }

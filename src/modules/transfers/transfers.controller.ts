@@ -30,6 +30,12 @@ import { CreateTransferDto } from './dto/create-transfer.dto.js';
 import { TransfersService } from './transfers.service.js';
 import type { PaginatedResult } from './transfers.service.js';
 
+type TransferResponse = Omit<Transfer, 'amount'> & { amount: string };
+
+function serializeTransfer(transfer: Transfer): TransferResponse {
+  return { ...transfer, amount: transfer.amount.toFixed(4) };
+}
+
 @ApiTags('Transfers')
 @ApiBearerAuth('access-token')
 @ApiUnauthorizedResponse({ description: 'Missing or invalid access token' })
@@ -58,10 +64,12 @@ export class TransfersController {
     @CurrentUser() user: AuthenticatedUser,
     @Body() dto: CreateTransferDto,
     @Headers('idempotency-key') idempotencyKey: string,
-  ): Promise<Transfer> {
+  ): Promise<TransferResponse> {
     if (!idempotencyKey?.trim())
       throw new BadRequestException('Idempotency-Key header is required');
-    return this.transfersService.executeTransfer(user.id, dto, idempotencyKey);
+    return serializeTransfer(
+      await this.transfersService.executeTransfer(user.id, dto, idempotencyKey),
+    );
   }
 
   @Get()
@@ -78,8 +86,13 @@ export class TransfersController {
     @CurrentUser() user: AuthenticatedUser,
     @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number = 20,
     @Query('cursor', new ParseUUIDPipe({ optional: true })) cursor?: string,
-  ): Promise<PaginatedResult<Transfer>> {
-    return this.transfersService.findAllForUser(user.id, limit, cursor);
+  ): Promise<PaginatedResult<TransferResponse>> {
+    const result = await this.transfersService.findAllForUser(
+      user.id,
+      limit,
+      cursor,
+    );
+    return { ...result, data: result.data.map(serializeTransfer) };
   }
 
   @Get(':id')
@@ -88,7 +101,9 @@ export class TransfersController {
   async findOne(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: AuthenticatedUser,
-  ): Promise<Transfer> {
-    return this.transfersService.findOneForUser(id, user.id);
+  ): Promise<TransferResponse> {
+    return serializeTransfer(
+      await this.transfersService.findOneForUser(id, user.id),
+    );
   }
 }

@@ -65,7 +65,10 @@ describe('FundingService', () => {
   beforeEach(async () => {
     jest.resetAllMocks();
     events.length = 0;
-    wallets.findByUser.mockResolvedValue({ ...wallet, balance: 0 });
+    wallets.findByUser.mockResolvedValue({
+      ...wallet,
+      balance: new Prisma.Decimal(0),
+    });
     prisma.wallet.findUnique.mockResolvedValue(wallet);
     prisma.funding.create.mockResolvedValue(pending);
     prisma.funding.update.mockResolvedValue(pending);
@@ -78,7 +81,7 @@ describe('FundingService', () => {
     tx.$queryRaw.mockResolvedValueOnce([pending]).mockResolvedValue([wallet]);
     tx.funding.update.mockResolvedValue(completed);
     ledger.recordEntry.mockResolvedValue(undefined);
-    ledger.getBalance.mockResolvedValue(500.1234);
+    ledger.getBalance.mockResolvedValue(new Prisma.Decimal('500.1234'));
     prisma.$transaction.mockImplementation(
       async (callback: (client: typeof tx) => Promise<Funding>) => {
         const result = await callback(tx);
@@ -104,31 +107,39 @@ describe('FundingService', () => {
   });
 
   it('initiates an NGN Decimal funding and saves the provider reference', async () => {
-    await service.initiate('user', 500.1234);
+    await service.initiate('user', '500.1234');
     const data = prisma.funding.create.mock.calls[0][0].data;
     expect(data.amount.toFixed(4)).toBe('500.1234');
     expect(data.reference).toMatch(/^[0-9a-f-]{36}$/);
     expect(provider.initiate).toHaveBeenCalledWith(
       data.reference,
-      500.1234,
+      '500.1234',
       'NGN',
     );
     expect(ledger.recordEntry).not.toHaveBeenCalled();
   });
 
-  it.each([0, -1, NaN, Infinity, 10_000_001, 1.00001])(
-    'rejects invalid amount %s',
-    async (amount) => {
-      await expect(service.initiate('user', amount)).rejects.toThrow(
-        'Amount must be between',
-      );
-      expect(prisma.funding.create).not.toHaveBeenCalled();
-    },
-  );
+  it.each([
+    '0',
+    '-1',
+    'NaN',
+    'Infinity',
+    '10000001',
+    '1.00001',
+    '',
+    '01',
+    '1e3',
+    '1000000000000000',
+  ])('rejects invalid amount %s', async (amount) => {
+    await expect(service.initiate('user', amount)).rejects.toThrow(
+      'Amount must be between',
+    );
+    expect(prisma.funding.create).not.toHaveBeenCalled();
+  });
 
   it('requires an existing wallet', async () => {
     wallets.findByUser.mockResolvedValue(null);
-    await expect(service.initiate('user', 500)).rejects.toThrow(
+    await expect(service.initiate('user', '500')).rejects.toThrow(
       'Create a wallet first',
     );
   });
@@ -159,7 +170,7 @@ describe('FundingService', () => {
     expect(queue.add).toHaveBeenCalledWith('funding-completed', {
       reference: pending.reference,
       walletId: wallet.id,
-      amount: 500.1234,
+      amount: '500.1234',
       completedAt: now,
     });
   });
@@ -227,12 +238,12 @@ describe('FundingService', () => {
 
   it('rejects inactive wallets and provider initiation failures', async () => {
     wallets.findByUser.mockResolvedValueOnce({ ...wallet, status: 'FROZEN' });
-    await expect(service.initiate('user', 500)).rejects.toThrow('active NGN');
+    await expect(service.initiate('user', '500')).rejects.toThrow('active NGN');
     provider.initiate.mockResolvedValue({
       providerRef: 'SIM-failed',
       status: 'FAILED',
     });
-    await service.initiate('user', 500);
+    await service.initiate('user', '500');
     expect(tx.funding.update).toHaveBeenCalledWith(
       expect.objectContaining({
         data: {
@@ -245,7 +256,7 @@ describe('FundingService', () => {
   it('returns balance for owned references and hides missing records and wallets', async () => {
     expect(
       (await service.findByReference(pending.reference, 'user')).walletBalance,
-    ).toBe(500.1234);
+    ).toEqual(new Prisma.Decimal('500.1234'));
     prisma.funding.findUnique.mockResolvedValueOnce(null);
     await expect(
       service.findByReference(pending.reference, 'user'),

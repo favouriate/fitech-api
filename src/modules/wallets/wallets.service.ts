@@ -5,11 +5,11 @@ import {
   NotFoundException,
   Optional,
 } from '@nestjs/common';
-import type { LedgerEntry, Wallet } from '@prisma/client';
+import type { LedgerEntry, Wallet, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { LedgerService } from '../ledger/ledger.service.js';
 
-export type WalletWithBalance = Wallet & { balance: number };
+export type WalletWithBalance = Wallet & { balance: Prisma.Decimal };
 
 export type PaginatedLedgerResult = {
   data: LedgerEntry[];

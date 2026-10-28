@@ -1,5 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsNumber, IsPositive, IsUUID, Min } from 'class-validator';
+import { Transform } from 'class-transformer';
+import { IsString, Matches, IsUUID } from 'class-validator';
 
 export class CreateTransferDto {
   @ApiProperty({
@@ -10,11 +11,15 @@ export class CreateTransferDto {
   receiverWalletId!: string;
 
   @ApiProperty({
-    example: 500,
-    description: 'Amount in NGN (e.g., 500 = ₦500). Must be positive.',
+    type: String,
+    example: '500.0000',
+    description:
+      'Amount in NGN as a decimal string; minimum 1, at most 4 decimal places.',
+    pattern: '^(?:0|[1-9]\\d{0,14})(?:\\.\\d{1,4})?$',
   })
-  @IsNumber()
-  @IsPositive()
-  @Min(1)
-  amount!: number;
+  // Preserve the original type even when the global pipe enables implicit conversion.
+  @Transform(({ obj }) => (obj as Record<string, unknown>).amount)
+  @IsString()
+  @Matches(/^(?:0|[1-9]\d{0,14})(?:\.\d{1,4})?$/)
+  amount!: string;
 }

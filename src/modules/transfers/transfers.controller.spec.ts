@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client';
 import { createMock } from '@golevelup/ts-jest';
 import { TransfersController } from './transfers.controller.js';
 import { TransfersService } from './transfers.service.js';
@@ -11,28 +12,35 @@ describe('Transfer API boundaries', () => {
   });
   it('rejects empty idempotency keys before executing transfers', async () => {
     await expect(
-      controller.create(user, { receiverWalletId: 'wallet', amount: 500 }, ''),
+      controller.create(
+        user,
+        { receiverWalletId: 'wallet', amount: '500' },
+        '',
+      ),
     ).rejects.toThrow('Idempotency-Key');
     expect(service.executeTransfer).not.toHaveBeenCalled();
   });
   it('passes authenticated identity and default pagination to the service', async () => {
-    service.executeTransfer.mockResolvedValue(
-      createMock<Awaited<ReturnType<TransfersService['executeTransfer']>>>(),
-    );
+    const transfer = {
+      ...createMock<Awaited<ReturnType<TransfersService['executeTransfer']>>>(),
+      amount: new Prisma.Decimal('500.1234'),
+    };
+    service.executeTransfer.mockResolvedValue(transfer);
+    service.findOneForUser.mockResolvedValue(transfer);
     service.findAllForUser.mockResolvedValue({
       data: [],
       pagination: { nextCursor: null, hasNextPage: false, limit: 20 },
     });
     await controller.create(
       user,
-      { receiverWalletId: 'wallet', amount: 500 },
+      { receiverWalletId: 'wallet', amount: '500' },
       'key',
     );
     await controller.findAll(user);
-    await controller.findOne('id', user);
+    expect((await controller.findOne('id', user)).amount).toBe('500.1234');
     expect(service.executeTransfer).toHaveBeenCalledWith(
       user.id,
-      { receiverWalletId: 'wallet', amount: 500 },
+      { receiverWalletId: 'wallet', amount: '500' },
       'key',
     );
     expect(service.findAllForUser).toHaveBeenCalledWith(user.id, 20, undefined);

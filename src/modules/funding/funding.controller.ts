@@ -76,7 +76,11 @@ export class FundingController {
   ): Promise<FundingStatusResponseDto> {
     const { funding, walletBalance } =
       await this.fundingService.findByReference(reference, user.id);
-    return { ...funding, amount: funding.amount.toFixed(4), walletBalance };
+    return {
+      ...funding,
+      amount: funding.amount.toFixed(4),
+      walletBalance: walletBalance.toFixed(4),
+    };
   }
 
   @Post(':reference/simulate-confirm')

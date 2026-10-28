@@ -102,7 +102,9 @@ export class WebhooksService {
               Record<string, unknown> | undefined;
             if (
               existing.eventType !== payload.eventType ||
-              previousData?.reference !== payload.data.reference
+              previousData?.reference !== payload.data.reference ||
+              previousData?.amount !== payload.data.amount ||
+              previousData?.currency !== payload.data.currency
             ) {
               throw new ConflictException(
                 'Webhook event ID is bound to another event',
@@ -127,6 +129,24 @@ export class WebhooksService {
           });
           this.logger.debug(`Funding lookup complete for webhook ${event.id}`);
           if (!funding) throw new NotFoundException('Funding not found');
+          const { amount, currency } = payload.data;
+          if (
+            typeof amount !== 'string' ||
+            !/^(?:0|[1-9]\d{0,14})(?:\.\d{1,4})?$/.test(amount) ||
+            typeof currency !== 'string'
+          ) {
+            throw new BadRequestException(
+              'Webhook amount must be a decimal string and currency is required',
+            );
+          }
+          if (
+            !funding.amount.eq(new Prisma.Decimal(amount)) ||
+            funding.currency !== currency
+          ) {
+            throw new ConflictException(
+              'Webhook settlement does not match funding amount and currency',
+            );
+          }
           // Duplicate provider events with different IDs must never double-credit.
           if (funding.status !== FundingStatus.COMPLETED) {
             try {

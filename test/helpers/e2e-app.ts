@@ -13,7 +13,10 @@ export const password = 'E2e!TestPassword123';
 export const tokensSchema = z.object({
   tokens: z.object({ accessToken: z.string(), refreshToken: z.string() }),
 });
-export const walletSchema = z.object({ id: z.string(), balance: z.number() });
+export const walletSchema = z.object({
+  id: z.string(),
+  balance: z.string().regex(/^-?\d+\.\d{4}$/),
+});
 
 export async function createApp(): Promise<E2eApp> {
   if (process.env.NODE_ENV !== 'test' || !process.env.DATABASE_URL)

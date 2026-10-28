@@ -308,7 +308,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"amount\": 500\n}",
+              "raw": "{\n  \"amount\": \"500.0000\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -337,7 +337,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test('Expected status 200', () => pm.response.to.have.status(200));",
-                  "if (pm.response.code === 200) pm.test('Wallet balance is included', () => pm.expect(pm.response.json().walletBalance).to.be.a('number'));"
+                  "if (pm.response.code === 200) pm.test('Wallet balance is included', () => pm.expect(pm.response.json().walletBalance).to.be.a('string'));"
                 ]
               }
             }

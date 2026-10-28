@@ -20,7 +20,6 @@ import { createHash, randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { LedgerService } from '../ledger/ledger.service.js';
-import { WalletsService } from '../wallets/wallets.service.js';
 import { CreateTransferDto } from './dto/create-transfer.dto.js';
 import { BusinessMetricsService } from '../metrics/business-metrics.service.js';
 
@@ -98,7 +97,6 @@ export class TransfersService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly ledgerService: LedgerService,
-    private readonly walletsService: WalletsService,
     private readonly logger: Logger,
     @InjectQueue('notifications')
     private readonly notifications: Queue<TransferNotification>,
@@ -115,20 +113,24 @@ export class TransfersService {
         throw new BadRequestException('Idempotency-Key header is required');
       }
       if (
-        !Number.isFinite(dto.amount) ||
-        dto.amount < 1 ||
-        dto.amount > Number.MAX_SAFE_INTEGER ||
-        new Prisma.Decimal(dto.amount).decimalPlaces() > 4
+        typeof dto.amount !== 'string' ||
+        !/^(?:0|[1-9]\d{0,14})(?:\.\d{1,4})?$/.test(dto.amount)
       ) {
         throw new BadRequestException(
-          'Amount must be at least 1 NGN, within the safe numeric range, and have at most 4 decimal places',
+          'Amount must be a decimal string with at most 4 decimal places',
+        );
+      }
+      const amount = new Prisma.Decimal(dto.amount);
+      if (amount.lt(1) || amount.gt('999999999999999.9999')) {
+        throw new BadRequestException(
+          'Amount must be at least 1 NGN, within the supported decimal range, and have at most 4 decimal places',
         );
       }
       const requestHash = createHash('sha256')
         .update(
           JSON.stringify({
             receiverWalletId: dto.receiverWalletId,
-            amount: dto.amount,
+            amount: amount.toFixed(4),
           }),
         )
         .digest('hex');
@@ -171,7 +173,6 @@ export class TransfersService {
       }
 
       // DTO, ledger entries, and wallet balances all use NGN directly.
-      const amount = new Prisma.Decimal(dto.amount);
       const reference = `TRF-${randomUUID()}`;
       let transfer: Transfer | undefined;
       try {
@@ -190,7 +191,6 @@ export class TransfersService {
               `;
                   if (rows[0]) locked.set(id, rows[0]);
                 }
-                await this.walletsService.findOneForUser(sender.id, senderId);
                 const senderWallet = locked.get(sender.id);
                 const receiverWallet = locked.get(dto.receiverWalletId);
                 if (
@@ -263,7 +263,7 @@ export class TransfersService {
                     status: IdempotencyStatus.FINISHED,
                     responseBody: {
                       ...created,
-                      amount: created.amount.toString(),
+                      amount: created.amount.toFixed(4),
                       createdAt: created.createdAt.toISOString(),
                       updatedAt: created.updatedAt.toISOString(),
                     },
@@ -305,7 +305,7 @@ export class TransfersService {
             transferId: transfer.id,
             senderWalletId: transfer.senderWalletId,
             receiverWalletId: transfer.receiverWalletId,
-            amount: transfer.amount.toString(),
+            amount: transfer.amount.toFixed(4),
             currency: transfer.currency,
             reference: transfer.reference,
           },

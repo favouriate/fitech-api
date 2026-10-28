@@ -20,7 +20,7 @@ export class SimulatedProviderService {
 
   async initiate(
     reference: string,
-    amount: number,
+    amount: string,
     currency: string,
   ): Promise<ProviderInitiationResult> {
     const providerRef = `SIM-${randomUUID()}`;

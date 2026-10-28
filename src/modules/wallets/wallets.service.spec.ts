@@ -56,10 +56,10 @@ describe('WalletsService', () => {
   });
   it('derives the user wallet balance', async () => {
     prisma.wallet.findFirst.mockResolvedValue(wallet);
-    ledger.getBalance.mockResolvedValue(100);
+    ledger.getBalance.mockResolvedValue(new Prisma.Decimal(100));
     expect(await service.findByUser('user')).toEqual({
       ...wallet,
-      balance: 100,
+      balance: new Prisma.Decimal(100),
     });
   });
   it('hides both missing and foreign wallets', async () => {
@@ -76,10 +76,10 @@ describe('WalletsService', () => {
   });
   it('returns the owned wallet with a derived balance', async () => {
     prisma.wallet.findUnique.mockResolvedValue(wallet);
-    ledger.getBalance.mockResolvedValue(100);
+    ledger.getBalance.mockResolvedValue(new Prisma.Decimal(100));
     expect(await service.findOneForUser('wallet', 'user')).toEqual({
       ...wallet,
-      balance: 100,
+      balance: new Prisma.Decimal(100),
     });
     expect(await service.findByIdUnsafe('wallet')).toEqual(wallet);
   });

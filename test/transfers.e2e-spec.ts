@@ -36,7 +36,7 @@ describe('Transfers: atomic money movement and idempotency', () => {
       }),
     );
     const key = randomUUID();
-    const body = { receiverWalletId: bobWallet, amount: 500 };
+    const body = { receiverWalletId: bobWallet, amount: '500' };
     const transferred = await request(app.getHttpServer())
       .post('/v1/transfers')
       .auth(alice.accessToken, { type: 'bearer' })
@@ -54,8 +54,8 @@ describe('Transfers: atomic money movement and idempotency', () => {
       .expect(202);
     expect(replay.body).toEqual(transferred.body);
     for (const [token, balance] of [
-      [alice.accessToken, 9500],
-      [bob.accessToken, 500],
+      [alice.accessToken, '9500.0000'],
+      [bob.accessToken, '500.0000'],
     ] as const) {
       const wallet = await request(app.getHttpServer())
         .get('/v1/wallets/me')
@@ -73,7 +73,7 @@ describe('Transfers: atomic money movement and idempotency', () => {
       .post('/v1/transfers')
       .auth(alice.accessToken, { type: 'bearer' })
       .set('Idempotency-Key', randomUUID())
-      .send({ ...body, amount: 99_999 })
+      .send({ ...body, amount: '99999' })
       .expect(400);
     expect(await prisma.ledgerEntry.count()).toBe(before);
     // Both participants may read their transfer; only unrelated users get 404.

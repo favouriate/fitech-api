@@ -20,7 +20,7 @@ import { BusinessMetricsService } from '../metrics/business-metrics.service.js';
 export type FundingNotification = {
   reference: string;
   walletId: string;
-  amount: number;
+  amount: string;
   completedAt: Date | null;
 };
 
@@ -66,13 +66,17 @@ export class FundingService {
     @Optional() private readonly metrics?: BusinessMetricsService,
   ) {}
 
-  async initiate(userId: string, amount: number): Promise<Funding> {
+  async initiate(userId: string, amount: string): Promise<Funding> {
     if (
-      !Number.isFinite(amount) ||
-      amount < 1 ||
-      amount > 10_000_000 ||
-      new Prisma.Decimal(amount).decimalPlaces() > 4
-    )
+      typeof amount !== 'string' ||
+      !/^(?:0|[1-9]\d{0,14})(?:\.\d{1,4})?$/.test(amount)
+    ) {
+      throw new BadRequestException(
+        'Amount must be between 1 and 10,000,000 NGN with at most 4 decimal places',
+      );
+    }
+    const decimalAmount = new Prisma.Decimal(amount);
+    if (decimalAmount.lt(1) || decimalAmount.gt('10000000'))
       throw new BadRequestException(
         'Amount must be between 1 and 10,000,000 NGN with at most 4 decimal places',
       );
@@ -88,7 +92,7 @@ export class FundingService {
       data: {
         reference,
         walletId: wallet.id,
-        amount: new Prisma.Decimal(amount),
+        amount: decimalAmount,
         currency: 'NGN',
         provider: 'SIMULATED',
         status: FundingStatus.PENDING,
@@ -96,7 +100,7 @@ export class FundingService {
     });
     const result = await this.simulatedProvider.initiate(
       reference,
-      amount,
+      decimalAmount.toFixed(4),
       'NGN',
     );
     const funding = await this.prisma.funding.update({
@@ -119,7 +123,7 @@ export class FundingService {
   async findByReference(
     reference: string,
     userId: string,
-  ): Promise<{ funding: Funding; walletBalance: number }> {
+  ): Promise<{ funding: Funding; walletBalance: Prisma.Decimal }> {
     const funding = await this.prisma.funding.findUnique({
       where: { reference },
     });
@@ -175,7 +179,7 @@ export class FundingService {
       await this.notificationsQueue.add('funding-completed', {
         reference: funding.reference,
         walletId: funding.walletId,
-        amount: Number(funding.amount),
+        amount: funding.amount.toFixed(4),
         completedAt: funding.completedAt,
       });
     } catch {

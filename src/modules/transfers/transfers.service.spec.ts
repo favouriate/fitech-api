@@ -26,9 +26,9 @@ const sender: Wallet = {
   updatedAt: date,
 };
 const receiver: Wallet = { ...sender, id: 'a-receiver', userId: 'other' };
-const dto = { receiverWalletId: receiver.id, amount: 500 };
+const dto = { receiverWalletId: receiver.id, amount: '500' };
 const requestHash = createHash('sha256')
-  .update(JSON.stringify(dto))
+  .update(JSON.stringify({ ...dto, amount: '500.0000' }))
   .digest('hex');
 const completed: Transfer = {
   id: 'transfer',
@@ -151,12 +151,13 @@ describe('TransfersService', () => {
     expect(credit[1].direction).toBe(Direction.CREDIT);
     expect(debit[1].reference).toBe(credit[1].reference);
     expect(events).toEqual(['commit', 'queue']);
+    expect(wallets.findOneForUser).not.toHaveBeenCalled();
     expect(
       tx.idempotencyKey.update.mock.calls[0][0].data.responseBody.amount,
-    ).toBe('500');
+    ).toBe('500.0000');
   });
 
-  it.each([1.5, 500.1234])(
+  it.each(['1.5', '500.1234'])(
     'preserves fractional NGN amount %s',
     async (amount) => {
       await service.executeTransfer('user', { ...dto, amount }, 'key');
@@ -193,7 +194,7 @@ describe('TransfersService', () => {
       await expect(
         service.executeTransfer(
           kind === 'another-user' ? 'other' : 'user',
-          kind === 'changed-body' ? { ...dto, amount: 6000 } : dto,
+          kind === 'changed-body' ? { ...dto, amount: '6000' } : dto,
           'key',
         ),
       ).rejects.toThrow('bound to another request');
@@ -248,15 +249,35 @@ describe('TransfersService', () => {
     expect(logger.error).toHaveBeenCalled();
   });
 
-  it.each([0, -1, NaN, Infinity, 1.00001, Number.MAX_SAFE_INTEGER + 1])(
-    'rejects invalid NGN amount %s',
-    async (amount) => {
-      await expect(
-        service.executeTransfer('user', { ...dto, amount }, 'key'),
-      ).rejects.toThrow('Amount must be at least 1 NGN');
-      expect(prisma.idempotencyKey.create).not.toHaveBeenCalled();
-    },
-  );
+  it.each([
+    '0',
+    '-1',
+    'NaN',
+    'Infinity',
+    '1.00001',
+    '1000000000000000',
+    '',
+    '01',
+    '1e3',
+  ])('rejects invalid NGN amount %s', async (amount) => {
+    await expect(
+      service.executeTransfer('user', { ...dto, amount }, 'key'),
+    ).rejects.toThrow('Amount must be');
+    expect(prisma.idempotencyKey.create).not.toHaveBeenCalled();
+  });
+
+  it('authorizes using the locked sender row rather than an external lookup', async () => {
+    tx.$queryRaw.mockImplementation(
+      async (_strings: TemplateStringsArray, id: string) => [
+        id === sender.id ? { ...sender, userId: 'another-user' } : receiver,
+      ],
+    );
+    await expect(service.executeTransfer('user', dto, 'key')).rejects.toThrow(
+      'Wallet not found',
+    );
+    expect(wallets.findOneForUser).not.toHaveBeenCalled();
+    expect(ledger.recordEntry).not.toHaveBeenCalled();
+  });
 
   it('rejects same-wallet transfers', async () => {
     await expect(

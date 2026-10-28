@@ -48,7 +48,7 @@ export class LedgerService {
     this.logger?.debug('Ledger entry recorded in caller transaction');
   }
 
-  async getBalance(walletId: string): Promise<number> {
+  async getBalance(walletId: string): Promise<Prisma.Decimal> {
     const rows = await this.prisma.ledgerEntry.groupBy({
       by: ['direction'],
       where: { walletId },
@@ -58,12 +58,12 @@ export class LedgerService {
       rows.find((row) => row.direction === Direction.CREDIT)?._sum.amount ?? 0;
     const debits =
       rows.find((row) => row.direction === Direction.DEBIT)?._sum.amount ?? 0;
-    return Number(credits) - Number(debits);
+    return new Prisma.Decimal(credits).minus(debits);
   }
 
-  async getBalances(walletIds: string[]): Promise<Map<string, number>> {
-    const balances = new Map<string, number>(
-      walletIds.map((walletId) => [walletId, 0]),
+  async getBalances(walletIds: string[]): Promise<Map<string, Prisma.Decimal>> {
+    const balances = new Map<string, Prisma.Decimal>(
+      walletIds.map((walletId) => [walletId, new Prisma.Decimal(0)]),
     );
     if (walletIds.length === 0) {
       return balances;
@@ -77,13 +77,13 @@ export class LedgerService {
       _sum: { amount: true },
     });
     for (const row of rows) {
-      const amount = Number(row._sum.amount ?? 0);
-      const balance = balances.get(row.walletId) ?? 0;
+      const amount = row._sum.amount ?? new Prisma.Decimal(0);
+      const balance = balances.get(row.walletId) ?? new Prisma.Decimal(0);
       balances.set(
         row.walletId,
         row.direction === Direction.CREDIT
-          ? balance + amount
-          : balance - amount,
+          ? balance.plus(amount)
+          : balance.minus(amount),
       );
     }
     return balances;

@@ -14,10 +14,10 @@ export class WalletResponseDto {
   status!: string;
 
   @ApiProperty({
-    example: 15000.5,
+    example: '15000.5000',
     description: 'Balance in NGN, derived from ledger entries',
   })
-  balance!: number;
+  balance!: string;
 
   @ApiProperty({ format: 'date-time' })
   createdAt!: Date;

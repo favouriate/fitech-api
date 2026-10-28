@@ -60,7 +60,7 @@ model User {
 model Wallet {
   id        String       @id @default(uuid())
   userId    String
-  user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user      User         @relation(fields: [userId], references: [id], onDelete: Restrict)
   currency  String       @default("NGN")
   status    WalletStatus @default(ACTIVE)
   createdAt DateTime     @default(now())
@@ -77,7 +77,7 @@ model Wallet {
 model LedgerEntry {
   id          String    @id @default(uuid())
   walletId    String
-  wallet      Wallet    @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  wallet      Wallet    @relation(fields: [walletId], references: [id], onDelete: Restrict)
   amount      Decimal   @db.Decimal(19, 4)
   direction   Direction
   reference   String

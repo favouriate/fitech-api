@@ -22,13 +22,21 @@ describe('Wallet response and authorization boundaries', () => {
   });
   it('returns the created wallet and exposes owned balances', async () => {
     service.create.mockResolvedValue(wallet);
-    service.findByUser.mockResolvedValue({ ...wallet, balance: 500 });
-    service.findOneForUser.mockResolvedValue({ ...wallet, balance: 500 });
+    service.findByUser.mockResolvedValue({
+      ...wallet,
+      balance: new Prisma.Decimal(500),
+    });
+    service.findOneForUser.mockResolvedValue({
+      ...wallet,
+      balance: new Prisma.Decimal(500),
+    });
     expect((await controller.create(user, { currency: 'NGN' })).balance).toBe(
-      0,
+      '0.0000',
     );
-    expect((await controller.mine(user))?.balance).toBe(500);
-    expect((await controller.findOne(wallet.id, user)).balance).toBe(500);
+    expect((await controller.mine(user))?.balance).toBe('500.0000');
+    expect((await controller.findOne(wallet.id, user)).balance).toBe(
+      '500.0000',
+    );
   });
   it('does not fetch ledger entries for another users wallet', async () => {
     service.findOneForUser.mockRejectedValue(new NotFoundException());
@@ -36,7 +44,10 @@ describe('Wallet response and authorization boundaries', () => {
     expect(service.getLedgerEntries).not.toHaveBeenCalled();
   });
   it('preserves decimal-string precision and normalizes nullable metadata', async () => {
-    service.findOneForUser.mockResolvedValue({ ...wallet, balance: 0 });
+    service.findOneForUser.mockResolvedValue({
+      ...wallet,
+      balance: new Prisma.Decimal(0),
+    });
     const base: LedgerEntry = {
       id: 'entry',
       walletId: wallet.id,

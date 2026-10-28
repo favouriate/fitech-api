@@ -3,7 +3,7 @@ import { Logger, ValidationPipe } from '@nestjs/common';
 import type { INestApplication } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Test } from '@nestjs/testing';
-import { FundingStatus } from '@prisma/client';
+import { FundingStatus, Prisma } from '@prisma/client';
 import type { WebhookEvent } from '@prisma/client';
 import { createHmac } from 'node:crypto';
 import request from 'supertest';
@@ -18,7 +18,7 @@ const reference = '3fa85f64-5717-4562-b3fc-2c963f66afa6';
 const payload = {
   eventId: 'evt_123',
   eventType: 'funding.completed',
-  data: { reference, amount: 500 },
+  data: { reference, amount: '500.0000', currency: 'NGN' },
 };
 const event: WebhookEvent = {
   id: 'event',
@@ -62,10 +62,14 @@ describe('WebhooksService and signature ordering', () => {
     });
     prisma.funding.findUnique.mockResolvedValue({
       reference,
+      amount: new Prisma.Decimal('500'),
+      currency: 'NGN',
       status: FundingStatus.PENDING,
     });
     funding.confirmFunding.mockResolvedValue({
       reference,
+      amount: new Prisma.Decimal('500'),
+      currency: 'NGN',
       status: FundingStatus.COMPLETED,
     });
     const module = await Test.createTestingModule({
@@ -196,9 +200,75 @@ describe('WebhooksService and signature ordering', () => {
   it('does not double-credit already completed funding for a new event ID', async () => {
     prisma.funding.findUnique.mockResolvedValue({
       reference,
+      amount: new Prisma.Decimal('500'),
+      currency: 'NGN',
       status: FundingStatus.COMPLETED,
     });
     await service.processEvent(payload);
+    expect(funding.confirmFunding).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { amount: '499.9999', currency: 'NGN' },
+    { amount: '500.0001', currency: 'NGN' },
+    { amount: '500', currency: 'USD' },
+    { amount: 'NaN', currency: 'NGN' },
+    { amount: 'Infinity', currency: 'NGN' },
+    { amount: 500, currency: 'NGN' },
+    { currency: 'NGN' },
+    { amount: '500' },
+  ])(
+    'rejects invalid or mismatched settlement %j before crediting',
+    async (data) => {
+      await expect(
+        service.processEvent({ ...payload, data: { reference, ...data } }),
+      ).rejects.toThrow();
+      expect(funding.confirmFunding).not.toHaveBeenCalled();
+      expect(prisma.webhookEvent.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ status: 'FAILED' }),
+        }),
+      );
+    },
+  );
+
+  it('compares large decimal settlement amounts without numeric rounding', async () => {
+    prisma.funding.findUnique.mockResolvedValue({
+      reference,
+      amount: new Prisma.Decimal('100000000000000.0001'),
+      currency: 'NGN',
+      status: FundingStatus.PENDING,
+    });
+    await expect(
+      service.processEvent({
+        ...payload,
+        data: { reference, amount: '100000000000000.0000', currency: 'NGN' },
+      }),
+    ).rejects.toThrow('does not match');
+    expect(funding.confirmFunding).not.toHaveBeenCalled();
+    await service.processEvent({
+      ...payload,
+      data: { reference, amount: '100000000000000.0001', currency: 'NGN' },
+    });
+    expect(funding.confirmFunding).toHaveBeenCalledTimes(1);
+  });
+
+  it('accepts equivalent decimal formatting', async () => {
+    await service.processEvent({
+      ...payload,
+      data: { ...payload.data, amount: '500' },
+    });
+    expect(funding.confirmFunding).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects duplicate event IDs with changed settlement details', async () => {
+    tx.webhookEvent.create.mockRejectedValue({ code: 'P2002' });
+    await expect(
+      service.processEvent({
+        ...payload,
+        data: { ...payload.data, amount: '499' },
+      }),
+    ).rejects.toThrow('bound to another event');
     expect(funding.confirmFunding).not.toHaveBeenCalled();
   });
 

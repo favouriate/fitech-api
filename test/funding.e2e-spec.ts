@@ -27,7 +27,7 @@ describe('Funding lifecycle and HMAC callbacks', () => {
     const initiated = await request(app.getHttpServer())
       .post('/v1/funding/initiate')
       .auth(user.accessToken, { type: 'bearer' })
-      .send({ amount: 500 })
+      .send({ amount: '500' })
       .expect(201);
     const funding = fundingSchema.parse(initiated.body);
     expect(funding.status).toBe('PENDING');
@@ -35,7 +35,7 @@ describe('Funding lifecycle and HMAC callbacks', () => {
       .get('/v1/wallets/me')
       .auth(user.accessToken, { type: 'bearer' })
       .expect(200);
-    expect(walletSchema.parse(before.body).balance).toBe(0);
+    expect(walletSchema.parse(before.body).balance).toBe('0.0000');
     const confirmed = await request(app.getHttpServer())
       .post(`/v1/funding/${funding.reference}/simulate-confirm`)
       .auth(user.accessToken, { type: 'bearer' })
@@ -45,7 +45,7 @@ describe('Funding lifecycle and HMAC callbacks', () => {
       .get('/v1/wallets/me')
       .auth(user.accessToken, { type: 'bearer' })
       .expect(200);
-    expect(walletSchema.parse(after.body).balance).toBe(500);
+    expect(walletSchema.parse(after.body).balance).toBe('500.0000');
     await request(app.getHttpServer())
       .post(`/v1/funding/${funding.reference}/simulate-confirm`)
       .auth(user.accessToken, { type: 'bearer' })
@@ -58,14 +58,14 @@ describe('Funding lifecycle and HMAC callbacks', () => {
     const response = await request(app.getHttpServer())
       .post('/v1/funding/initiate')
       .auth(user.accessToken, { type: 'bearer' })
-      .send({ amount: 3000 })
+      .send({ amount: '3000' })
       .expect(201);
     const funding = fundingSchema.parse(response.body);
     const eventId = randomUUID();
     const payload = JSON.stringify({
       eventId,
       eventType: 'funding.completed',
-      data: { reference: funding.reference, amount: 3000 },
+      data: { reference: funding.reference, amount: '3000', currency: 'NGN' },
     });
     const signature = createHmac('sha256', process.env.WEBHOOK_SECRET ?? '')
       .update(payload)
@@ -100,6 +100,6 @@ describe('Funding lifecycle and HMAC callbacks', () => {
       .get('/v1/wallets/me')
       .auth(user.accessToken, { type: 'bearer' })
       .expect(200);
-    expect(walletSchema.parse(wallet.body).balance).toBe(3000);
+    expect(walletSchema.parse(wallet.body).balance).toBe('3000.0000');
   });
 });
