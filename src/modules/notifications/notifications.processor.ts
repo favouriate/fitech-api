@@ -1,9 +1,15 @@
 import { Logger } from '@nestjs/common';
 import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { Job } from 'bullmq';
+import { getWorkerConnectionOptions } from '../../config/worker-connection.config.js';
 import type { TransferNotification } from '../transfers/transfers.service.js';
 
-@Processor('notifications')
+@Processor('notifications', {
+  // Resolve after ConfigModule has loaded .env, rather than at import time.
+  get connection() {
+    return getWorkerConnectionOptions();
+  },
+})
 export class NotificationsProcessor extends WorkerHost {
   constructor(private readonly logger: Logger) {
     super();

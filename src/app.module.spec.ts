@@ -1,7 +1,8 @@
 import { createMock } from '@golevelup/ts-jest';
 import { ConfigService } from '@nestjs/config';
 import { Test } from '@nestjs/testing';
-import { getQueueToken } from '@nestjs/bullmq';
+import { getQueueToken, getSharedConfigToken } from '@nestjs/bullmq';
+import type { BullRootModuleOptions } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { PrismaService } from './prisma/prisma.service.js';
 import { HealthController } from './health/health.controller.js';
@@ -52,6 +53,14 @@ describe('Application module configuration and scheduling', () => {
           .useValue(queue)
           .compile();
         try {
+          expect(
+            module.get<BullRootModuleOptions>(getSharedConfigToken()).connection,
+          ).toEqual({
+            url: undefined,
+            maxRetriesPerRequest: 1,
+            enableOfflineQueue: false,
+            connectTimeout: 5000,
+          });
           const logging = module.get<{
             pinoHttp: {
               genReqId: (req: { headers: Record<string, string> }) => string;

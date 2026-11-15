@@ -93,14 +93,16 @@ import { AllExceptionsFilter } from './common/filters/all-exceptions.filter.js';
 
     PrismaModule,
     BullModule.forRootAsync({
-      inject: [ConfigService],
-      useFactory: (configService: ConfigService) => ({
+      imports: [ConfigModule],
+      useFactory: async (configService: ConfigService) => ({
         connection: {
           url: configService.get<string>('REDIS_URL'),
-          maxRetriesPerRequest: null,
-          enableReadyCheck: false,
+          maxRetriesPerRequest: 1,
+          enableOfflineQueue: false,
+          connectTimeout: 5000,
         },
       }),
+      inject: [ConfigService],
     }),
     HealthModule,
     AuthModule,

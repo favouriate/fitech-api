@@ -1,9 +1,15 @@
 import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { Logger } from '@nestjs/common';
 import { Job } from 'bullmq';
+import { getWorkerConnectionOptions } from '../../config/worker-connection.config.js';
 import { FundingService } from './funding.service.js';
 
-@Processor('funding-reconciliation')
+@Processor('funding-reconciliation', {
+  // Resolve after ConfigModule has loaded .env, rather than at import time.
+  get connection() {
+    return getWorkerConnectionOptions();
+  },
+})
 export class ReconciliationProcessor extends WorkerHost {
   constructor(
     private readonly funding: FundingService,
