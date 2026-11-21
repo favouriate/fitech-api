@@ -47,8 +47,7 @@ services:
       NODE_ENV: production
       PORT: 3000
       DATABASE_URL: 'postgresql://fitech:${DB_PASSWORD:?Set DB_PASSWORD for production}@postgres:5432/fitech_db?schema=public'
-      REDIS_HOST: redis
-      REDIS_PORT: 6379
+      REDIS_URL: 'redis://redis:6379'
       JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:?Set JWT_ACCESS_SECRET (at least 32 characters)}
       JWT_ACCESS_EXPIRES_IN: 15m
       JWT_REFRESH_EXPIRES_IN: 7d

@@ -1,5 +1,5 @@
 import { Reflector } from '@nestjs/core';
-import type { NestWorkerOptions } from '@nestjs/bullmq';
+import type { WorkerOptions } from 'bullmq';
 import { ReconciliationProcessor } from '../modules/funding/reconciliation.processor.js';
 import { NotificationsProcessor } from '../modules/notifications/notifications.processor.js';
 
@@ -11,7 +11,7 @@ describe.each([NotificationsProcessor, ReconciliationProcessor])(
       try {
         // Processor decorators have already executed before this value is set.
         process.env.REDIS_URL = 'redis://localhost:6380/2';
-        const options = new Reflector().get<NestWorkerOptions>(
+        const options = new Reflector().get<Pick<WorkerOptions, 'connection'>>(
           'bullmq:worker_metadata',
           ProcessorClass,
         );

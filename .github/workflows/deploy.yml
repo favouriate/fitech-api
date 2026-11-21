@@ -15,7 +15,14 @@ env:
   IMAGE_NAME: ${{ github.repository }}
 
 jobs:
+  lint-and-test:
+    name: CI checks
+    uses: ./.github/workflows/ci.yml
+    permissions:
+      contents: read
+
   build-and-push:
+    needs: [lint-and-test]
     name: Build & Push to GHCR
     runs-on: ubuntu-latest
     timeout-minutes: 15

@@ -49,7 +49,7 @@ describe('Notification and reconciliation workers', () => {
   it('simulates provider acceptance without crediting any wallet', async () => {
     const result = await new SimulatedProviderService(logger).initiate(
       'reference',
-      500,
+      '500',
       'NGN',
     );
     expect(result.status).toBe('PENDING');
